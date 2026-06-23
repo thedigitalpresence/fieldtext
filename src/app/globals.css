@@ -1,0 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: light; }
+/* warm neutral background for a light landscaping feel */
+body { @apply bg-stone-50 text-gray-900 antialiased; }

@@ -1,0 +1,137 @@
+/**
+ * Lightweight i18n for the dashboard UI. One dictionary per language; components
+ * receive the resolved dictionary. Adding a third language = add a dictionary,
+ * no code changes.
+ */
+import type { Lang, ClientStatus } from "@/lib/types";
+
+export type Dict = typeof en;
+
+const en = {
+  signOut: "Sign out",
+  remindersTextYou: (phone: string) => `Reminders text you at ${phone}`,
+  // KPIs
+  monthlyRecurring: "Monthly recurring",
+  openQuotes: "Open quotes",
+  potential: (v: string) => `${v}/mo potential`,
+  remindersThisWeek: "Reminders this week",
+  activeClients: "Active clients",
+  // sections
+  pipeline: "Pipeline",
+  upcomingReminders: "Upcoming reminders",
+  recentActivity: "Recent activity",
+  recentJobs: "Recent jobs",
+  recentPayments: "Recent payments",
+  // pipeline / cards
+  searchPlaceholder: "Search clients…",
+  all: "All",
+  noOpenQuotes: "No open quotes.",
+  noActiveClients: "No active clients yet.",
+  noMatches: "No clients match your search.",
+  next: "Next",
+  sent: "sent",
+  clientSince: "Client since",
+  // upcoming
+  followUpWith: (name: string) => `Follow up with ${name}`,
+  openQuote: "Open quote",
+  quoteWord: "quote",
+  moreDates: (n: number) => `+${n} more ${n === 1 ? "date" : "dates"}`,
+  nothingScheduled: "Nothing scheduled — log a quote and a follow-up sequence sets up automatically.",
+  // activity
+  seeAll: "See all",
+  seeLess: "See less",
+  noActivity: "No activity yet — text the number to log your first quote.",
+  // empty states
+  noJobs: "No jobs logged yet — text the number to add one.",
+  noPayments: 'No payments yet — text e.g. "collected $200 from Angela" to log one.',
+  // statuses
+  status: { quoted: "Quoted", active: "Active", completed: "Completed", lost: "Lost" } as Record<ClientStatus, string>,
+  // client detail
+  details: "Details",
+  close: "Close",
+  contact: "Contact",
+  address: "Address",
+  amount: "Amount",
+  service: "Service",
+  notes: "Notes",
+  jobs: "Jobs",
+  payments: "Payments",
+  reminders: "Reminders",
+  none: "None",
+  markAccepted: "Mark accepted",
+  markDeclined: "Mark declined / remove",
+  addNote: "Add note",
+  addReminder: "Add reminder",
+  logPayment: "Log payment",
+  notePlaceholder: "Add a note…",
+  reminderTextPlaceholder: "Remind me to…",
+  amountPlaceholder: "Amount",
+  save: "Save",
+  snooze: "Snooze 3d",
+  done: "Done",
+  cancel: "Cancel",
+  language: "Language",
+};
+
+const es: Dict = {
+  signOut: "Cerrar sesión",
+  remindersTextYou: (phone: string) => `Los recordatorios te llegan por mensaje al ${phone}`,
+  monthlyRecurring: "Ingreso mensual recurrente",
+  openQuotes: "Cotizaciones abiertas",
+  potential: (v: string) => `${v}/mes potencial`,
+  remindersThisWeek: "Recordatorios esta semana",
+  activeClients: "Clientes activos",
+  pipeline: "Embudo",
+  upcomingReminders: "Próximos recordatorios",
+  recentActivity: "Actividad reciente",
+  recentJobs: "Trabajos recientes",
+  recentPayments: "Pagos recientes",
+  searchPlaceholder: "Buscar clientes…",
+  all: "Todos",
+  noOpenQuotes: "Sin cotizaciones abiertas.",
+  noActiveClients: "Aún no hay clientes activos.",
+  noMatches: "Ningún cliente coincide con tu búsqueda.",
+  next: "Próximo",
+  sent: "enviada",
+  clientSince: "Cliente desde",
+  followUpWith: (name: string) => `Dar seguimiento a ${name}`,
+  openQuote: "Cotización abierta",
+  quoteWord: "cotización",
+  moreDates: (n: number) => `+${n} fecha${n === 1 ? "" : "s"} más`,
+  nothingScheduled: "Nada programado — registra una cotización y se crea una secuencia de seguimiento automáticamente.",
+  seeAll: "Ver todo",
+  seeLess: "Ver menos",
+  noActivity: "Sin actividad aún — envía un mensaje al número para registrar tu primera cotización.",
+  noJobs: "Aún no hay trabajos — envía un mensaje al número para agregar uno.",
+  noPayments: 'Aún no hay pagos — envía p. ej. "cobré $200 a Angela" para registrar uno.',
+  status: { quoted: "Cotizado", active: "Activo", completed: "Completado", lost: "Perdido" },
+  details: "Detalles",
+  close: "Cerrar",
+  contact: "Contacto",
+  address: "Dirección",
+  amount: "Monto",
+  service: "Servicio",
+  notes: "Notas",
+  jobs: "Trabajos",
+  payments: "Pagos",
+  reminders: "Recordatorios",
+  none: "Ninguno",
+  markAccepted: "Marcar aceptado",
+  markDeclined: "Marcar rechazado / quitar",
+  addNote: "Agregar nota",
+  addReminder: "Agregar recordatorio",
+  logPayment: "Registrar pago",
+  notePlaceholder: "Agregar una nota…",
+  reminderTextPlaceholder: "Recuérdame…",
+  amountPlaceholder: "Monto",
+  save: "Guardar",
+  snooze: "Posponer 3d",
+  done: "Hecho",
+  cancel: "Cancelar",
+  language: "Idioma",
+};
+
+const DICTS: Record<Lang, Dict> = { en, es };
+export function dict(lang: Lang): Dict {
+  return DICTS[lang] ?? en;
+}
