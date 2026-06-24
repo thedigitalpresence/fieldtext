@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
   FileText, UserCheck, Briefcase, DollarSign, Bell, MessageCircle, Languages,
-  CalendarClock, Search, X, Check, Clock, Ban, Upload,
+  CalendarClock, Search, X, Check, Clock, Ban, Upload, Sun, Leaf, TrendingUp, AlertCircle,
 } from "lucide-react";
 import type { ClientStatus, Lang } from "@/lib/types";
 import {
@@ -81,9 +81,14 @@ export default function DashboardClient(props: Props) {
     <main className="mx-auto max-w-3xl space-y-7 px-4 py-6 sm:px-6">
       {/* Header */}
       <header className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="truncate text-2xl font-bold tracking-tight text-gray-900">{props.businessName}</h1>
-          {props.subtitle && <p className="mt-0.5 text-sm text-gray-500">{props.subtitle}</p>}
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand text-white shadow-sm">
+            <Leaf className="h-5 w-5" />
+          </span>
+          <div className="min-w-0">
+            <h1 className="truncate text-2xl font-bold tracking-tight text-gray-900">{props.businessName}</h1>
+            {props.subtitle && <p className="mt-0.5 text-sm text-gray-500">{props.subtitle}</p>}
+          </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <div className="flex overflow-hidden rounded-lg border border-gray-300 text-xs font-medium">
@@ -102,56 +107,68 @@ export default function DashboardClient(props: Props) {
         </div>
       </header>
 
-      {/* Today focus strip */}
-      <section className="overflow-hidden rounded-2xl border border-brand/20 bg-white shadow-sm">
-        <div className="flex items-center gap-2 border-b border-gray-100 bg-brand/5 px-4 py-2.5">
-          <CalendarClock className="h-4 w-4 text-brand-dark" />
-          <span className="text-sm font-bold text-brand-dark">{L.today}</span>
-          <span className="text-sm text-gray-500">· {props.today.dateStr}</span>
-        </div>
-        {props.today.services.length === 0 && props.today.reminders.length === 0 ? (
-          <p className="px-4 py-4 text-sm text-gray-400">{L.allClearToday}</p>
-        ) : (
-          <ul className="divide-y divide-gray-50">
-            {props.today.services.map((s) => (
-              <li key={`s-${s.id}`}>
-                <button onClick={() => setSelectedId(s.id)} className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-gray-50">
-                  <CalendarClock className="h-4 w-4 shrink-0 text-brand" />
-                  <span className="min-w-0 flex-1">
-                    <span className="truncate font-medium text-gray-900">{s.name}</span>
-                    {s.address && <span className="ml-2 text-sm text-gray-400">{s.address}</span>}
-                  </span>
-                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${s.overdue ? "bg-red-100 text-red-700" : "bg-brand/10 text-brand-dark"}`}>
-                    {s.overdue ? L.overdue : L.serviceDue}
-                  </span>
-                </button>
-              </li>
-            ))}
-            {props.today.reminders.map((r) => (
-              <li key={`r-${r.id}`}>
-                <button onClick={() => r.clientId && setSelectedId(r.clientId)} disabled={!r.clientId} className="flex w-full items-center gap-3 px-4 py-2.5 text-left enabled:hover:bg-gray-50">
-                  <Bell className="h-4 w-4 shrink-0 text-amber-500" />
-                  <span className="min-w-0 flex-1">
-                    <span className="break-words font-medium text-gray-900">{r.text}</span>
-                    {r.who && <span className="ml-2 text-sm text-gray-400">{r.who}</span>}
-                  </span>
-                  {r.overdue && <span className="shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">{L.overdue}</span>}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      {/* Today hero */}
+      {(() => {
+        const count = props.today.services.length + props.today.reminders.length;
+        return (
+          <section className="overflow-hidden rounded-2xl shadow-sm ring-1 ring-brand/20">
+            <div className="flex items-center gap-3 bg-gradient-to-r from-brand to-brand-dark px-4 py-3 text-white">
+              <Sun className="h-6 w-6 shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold uppercase tracking-wide leading-tight">{L.today}</p>
+                <p className="text-xs capitalize text-white/80">{props.today.dateStr}</p>
+              </div>
+              {count > 0 && (
+                <span className="shrink-0 rounded-full bg-white/20 px-2.5 py-1 text-sm font-bold tabular-nums">{count}</span>
+              )}
+            </div>
+            {count === 0 ? (
+              <div className="flex items-center gap-2 bg-white px-4 py-4 text-sm text-gray-500">
+                <Check className="h-4 w-4 text-brand" />{L.allClearToday}
+              </div>
+            ) : (
+              <ul className="divide-y divide-gray-50 bg-white">
+                {props.today.services.map((s) => (
+                  <li key={`s-${s.id}`}>
+                    <button onClick={() => setSelectedId(s.id)} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-brand/5">
+                      <Avatar name={s.name} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-semibold text-gray-900">{s.name}</span>
+                        <span className="block truncate text-xs text-gray-400">{s.address || L.serviceDue}</span>
+                      </span>
+                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${s.overdue ? "bg-red-100 text-red-700" : "bg-brand/10 text-brand-dark"}`}>
+                        {s.overdue ? L.overdue : L.serviceDue}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+                {props.today.reminders.map((r) => (
+                  <li key={`r-${r.id}`}>
+                    <button onClick={() => r.clientId && setSelectedId(r.clientId)} disabled={!r.clientId} className="flex w-full items-center gap-3 px-4 py-3 text-left enabled:hover:bg-brand/5">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100"><Bell className="h-4 w-4 text-amber-600" /></span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block break-words font-semibold text-gray-900">{r.text}</span>
+                        {r.who && <span className="block truncate text-xs text-gray-400">{r.who}</span>}
+                      </span>
+                      {r.overdue && <span className="shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">{L.overdue}</span>}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        );
+      })()}
 
       {/* KPIs — 2x2 on mobile, 4 across on desktop */}
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat value={props.kpis.mrr} label={L.monthlyRecurring} />
-        <Stat value={`${props.kpis.activeClients}`} label={L.activeClients} sub={props.kpis.scheduledThisWeek > 0 ? `${props.kpis.scheduledThisWeek} ${L.scheduledThisWeek.toLowerCase()}` : undefined} />
-        <Stat value={`${props.kpis.openQuotes}`} label={L.openQuotes} sub={props.kpis.potential ?? undefined} />
+        <Stat value={props.kpis.mrr} label={L.monthlyRecurring} Icon={TrendingUp} accent />
+        <Stat value={`${props.kpis.activeClients}`} label={L.activeClients} Icon={UserCheck} sub={props.kpis.scheduledThisWeek > 0 ? `${props.kpis.scheduledThisWeek} ${L.scheduledThisWeek.toLowerCase()}` : undefined} />
+        <Stat value={`${props.kpis.openQuotes}`} label={L.openQuotes} Icon={FileText} sub={props.kpis.potential ?? undefined} />
         {props.kpis.outstanding ? (
-          <Stat value={props.kpis.outstanding} label={L.outstanding} sub={`${props.kpis.remindersThisWeek} ${L.remindersThisWeek.toLowerCase()}`} />
+          <Stat value={props.kpis.outstanding} label={L.outstanding} Icon={AlertCircle} danger sub={`${props.kpis.remindersThisWeek} ${L.remindersThisWeek.toLowerCase()}`} />
         ) : (
-          <Stat value={`${props.kpis.remindersThisWeek}`} label={L.remindersThisWeek} />
+          <Stat value={`${props.kpis.remindersThisWeek}`} label={L.remindersThisWeek} Icon={Bell} />
         )}
       </section>
 
@@ -223,33 +240,36 @@ export default function DashboardClient(props: Props) {
                     <button
                       key={c.id}
                       onClick={() => setSelectedId(c.id)}
-                      className="w-full rounded-xl border border-gray-100 bg-white p-3 text-left shadow-sm transition hover:border-brand/40 hover:shadow"
+                      className="flex w-full items-start gap-3 rounded-2xl border border-gray-100 bg-white p-3 text-left shadow-sm transition hover:border-brand/40 hover:shadow"
                     >
-                      <div className="flex items-baseline justify-between gap-2">
-                        <span className="truncate font-semibold text-gray-900">{c.name}</span>
-                        <span className="shrink-0 text-sm font-semibold text-gray-900">
-                          {c.amountStr}<span className="font-normal text-gray-400">{c.periodStr}</span>
-                        </span>
-                      </div>
-                      {(c.address || c.service) && (
-                        <p className="mt-0.5 truncate text-sm text-gray-500">{[c.address, c.service].filter(Boolean).join(" · ")}</p>
-                      )}
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        {status === "quoted" && c.nextStr && (
-                          <span className="rounded-full bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand-dark">{L.next} {c.nextStr}</span>
-                        )}
-                        {status === "active" && c.nextServiceStr && (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand-dark">
-                            <CalendarClock className="h-3 w-3" />{L.next} {c.nextServiceStr}
+                      <Avatar name={c.name} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="truncate font-semibold text-gray-900">{c.name}</span>
+                          <span className="shrink-0 text-sm font-semibold text-gray-900">
+                            {c.amountStr}<span className="font-normal text-gray-400">{c.periodStr}</span>
                           </span>
+                        </div>
+                        {(c.address || c.service) && (
+                          <p className="mt-0.5 truncate text-sm text-gray-500">{[c.address, c.service].filter(Boolean).join(" · ")}</p>
                         )}
-                        <span className="text-xs text-gray-400">
-                          {status === "quoted"
-                            ? `${L.sent} ${c.sentStr}`
-                            : c.scheduleStr
-                            ? c.scheduleStr
-                            : `${L.clientSince} ${c.sinceStr}`}
-                        </span>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          {status === "quoted" && c.nextStr && (
+                            <span className="rounded-full bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand-dark">{L.next} {c.nextStr}</span>
+                          )}
+                          {status === "active" && c.nextServiceStr && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand-dark">
+                              <CalendarClock className="h-3 w-3" />{L.next} {c.nextServiceStr}
+                            </span>
+                          )}
+                          <span className="text-xs text-gray-400">
+                            {status === "quoted"
+                              ? `${L.sent} ${c.sentStr}`
+                              : c.scheduleStr
+                              ? c.scheduleStr
+                              : `${L.clientSince} ${c.sinceStr}`}
+                          </span>
+                        </div>
                       </div>
                     </button>
                   ))}
@@ -356,12 +376,15 @@ function ClientDetail({
     <div className="fixed inset-0 z-50">
       <button aria-label={L.close} onClick={onClose} className="absolute inset-0 bg-black/30" />
       <div className="absolute inset-y-0 right-0 flex w-full max-w-md flex-col overflow-y-auto bg-gray-50 shadow-xl">
-        <div className="sticky top-0 flex items-center justify-between border-b border-gray-200 bg-white px-4 py-3">
-          <div className="min-w-0">
-            <h3 className="truncate text-lg font-bold text-gray-900">{client.name}</h3>
-            <span className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLOR[client.status]}`}>{L.status[client.status]}</span>
+        <div className="sticky top-0 flex items-center justify-between gap-3 border-b border-gray-200 bg-white px-4 py-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <Avatar name={client.name} />
+            <div className="min-w-0">
+              <h3 className="truncate text-lg font-bold text-gray-900">{client.name}</h3>
+              <span className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLOR[client.status]}`}>{L.status[client.status]}</span>
+            </div>
           </div>
-          <button onClick={onClose} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100"><X className="h-5 w-5" /></button>
+          <button onClick={onClose} className="shrink-0 rounded-lg p-2 text-gray-500 hover:bg-gray-100"><X className="h-5 w-5" /></button>
         </div>
 
         <div className="space-y-5 p-4">
@@ -431,13 +454,29 @@ function ClientDetail({
   );
 }
 
-function Stat({ value, label, sub }: { value: string; label: string; sub?: string }) {
+function Stat({ value, label, sub, accent, danger, Icon }: { value: string; label: string; sub?: string; accent?: boolean; danger?: boolean; Icon?: typeof FileText }) {
+  const tone = accent
+    ? { card: "border-brand bg-brand", val: "text-white", lab: "text-white/80", sub: "text-white/70", icon: "text-white/70" }
+    : danger
+    ? { card: "border-red-200 bg-white", val: "text-red-700", lab: "text-gray-500", sub: "text-gray-400", icon: "text-red-500" }
+    : { card: "border-gray-100 bg-white", val: "text-gray-900", lab: "text-gray-500", sub: "text-gray-400", icon: "text-brand" };
   return (
-    <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-      <div className="text-2xl font-bold tracking-tight text-gray-900">{value}</div>
-      <div className="mt-0.5 text-xs font-medium uppercase tracking-wide text-gray-500">{label}</div>
-      {sub && <div className="mt-0.5 text-xs text-gray-400">{sub}</div>}
+    <div className={`rounded-2xl border p-4 shadow-sm ${tone.card}`}>
+      <div className="flex items-start justify-between gap-2">
+        <div className={`text-2xl font-bold tracking-tight ${tone.val}`}>{value}</div>
+        {Icon && <Icon className={`h-4 w-4 shrink-0 ${tone.icon}`} />}
+      </div>
+      <div className={`mt-0.5 text-xs font-medium uppercase tracking-wide ${tone.lab}`}>{label}</div>
+      {sub && <div className={`mt-0.5 text-xs ${tone.sub}`}>{sub}</div>}
     </div>
+  );
+}
+function Avatar({ name }: { name: string }) {
+  const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
+  return (
+    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand/10 text-xs font-bold text-brand-dark">
+      {initials}
+    </span>
   );
 }
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
