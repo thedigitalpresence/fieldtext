@@ -139,6 +139,7 @@ export default async function DashboardPage() {
         // black book: recurring service schedule
         scheduleStr: interval ? [interval, c.service_day ? c.service_day.charAt(0).toUpperCase() + c.service_day.slice(1) : ""].filter(Boolean).join(" · ") : null,
         nextServiceStr: c.next_service_on ? fmtShort(c.next_service_on, lang) : null,
+        serviceDay: c.service_day ?? null,
       };
     });
 
@@ -169,6 +170,14 @@ export default async function DashboardPage() {
   const payViews = payments.map((p) => ({ id: p.id, clientId: p.client_id, amountStr: money(p.amount), dateStr: fmtShort(p.paid_on ?? p.created_at, lang), who: p.client_id ? nameOf(p.client_id) : null, status: p.status ?? "paid" }));
   const reminderViews = reminders.map((r) => ({ id: r.id, clientId: r.client_id, text: r.text, dateStr: fmtShort(r.due_at, lang), kind: r.kind }));
 
+  // Localized weekday names keyed by lowercase English name (Jan 7 2024 = Sunday).
+  const weekdays: Record<string, string> = {};
+  for (let i = 0; i < 7; i++) {
+    const dt = new Date(Date.UTC(2024, 0, 7 + i));
+    const key = dt.toLocaleDateString("en-US", { weekday: "long" }).toLowerCase();
+    weekdays[key] = dt.toLocaleDateString(lang === "es" ? "es-ES" : "en-US", { weekday: "long" });
+  }
+
   // Plain-string label bag for the client component (no function values).
   const labels = {
     signOut: d.signOut, pipeline: d.pipeline, upcomingReminders: d.upcomingReminders, recentActivity: d.recentActivity,
@@ -185,6 +194,7 @@ export default async function DashboardPage() {
     paid: d.paid, unpaid: d.unpaid, overdue: d.overdue,
     importClients: d.importClients, firstRunTitle: d.firstRunTitle, firstRunBody: d.firstRunBody,
     today: d.today, allClearToday: d.allClearToday, serviceDue: d.serviceDue,
+    unscheduled: d.unscheduled, weekdays,
     moreDatesOne: d.moreDates(1).replace(/\d+\s*/, ""), // "more date"/"fecha más" suffix
   };
 

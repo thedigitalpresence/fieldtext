@@ -26,7 +26,7 @@ type ClientView = {
   id: string; name: string; address: string | null; status: ClientStatus;
   amountStr: string; periodStr: string; service: string | null; notes: string | null;
   sentStr: string; sinceStr: string; nextStr: string | null;
-  scheduleStr: string | null; nextServiceStr: string | null;
+  scheduleStr: string | null; nextServiceStr: string | null; serviceDay: string | null;
 };
 type Upcoming = {
   id: string; type: "quote" | "manual"; clientId: string | null;
@@ -57,6 +57,12 @@ interface Props {
 }
 
 const TAP = "min-h-[44px]";
+const DAY_ORDER = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+// Two distinct column tints for the pipeline.
+const COLUMN_TINT: Record<"quoted" | "active", { panel: string; chip: string }> = {
+  quoted: { panel: "border-amber-200/70 bg-amber-50/60", chip: "bg-amber-100 text-amber-800" },
+  active: { panel: "border-green-200/70 bg-green-50/60", chip: "bg-green-100 text-green-800" },
+};
 
 export default function DashboardClient(props: Props) {
   const L = props.labels;
@@ -76,6 +82,59 @@ export default function DashboardClient(props: Props) {
 
   const selected = props.clients.find((c) => c.id === selectedId) ?? null;
   const activityShown = showAllActivity ? props.activity : props.activity.slice(0, 6);
+
+  // Active clients grouped by service day, ordered Mon→Sun with "no day set" last.
+  const activeByDay = (list: ClientView[]) => {
+    const groups = new Map<string, ClientView[]>();
+    for (const c of list) {
+      const key = c.serviceDay && DAY_ORDER.includes(c.serviceDay) ? c.serviceDay : "__none";
+      (groups.get(key) ?? groups.set(key, []).get(key)!).push(c);
+    }
+    const order = [...DAY_ORDER.filter((d) => groups.has(d)), ...(groups.has("__none") ? ["__none"] : [])];
+    return order.map((day) => ({
+      day,
+      label: day === "__none" ? L.unscheduled : (L.weekdays?.[day] ?? day),
+      clients: groups.get(day)!,
+    }));
+  };
+
+  const clientCard = (c: ClientView, status: ClientStatus) => (
+    <button
+      key={c.id}
+      onClick={() => setSelectedId(c.id)}
+      className="flex w-full items-start gap-3 rounded-2xl border border-gray-100 bg-white p-3 text-left shadow-sm transition hover:border-brand/40 hover:shadow"
+    >
+      <Avatar name={c.name} />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="truncate font-semibold text-gray-900">{c.name}</span>
+          <span className="shrink-0 text-sm font-semibold text-gray-900">
+            {c.amountStr}<span className="font-normal text-gray-400">{c.periodStr}</span>
+          </span>
+        </div>
+        {(c.address || c.service) && (
+          <p className="mt-0.5 truncate text-sm text-gray-500">{[c.address, c.service].filter(Boolean).join(" · ")}</p>
+        )}
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          {status === "quoted" && c.nextStr && (
+            <span className="rounded-full bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand-dark">{L.next} {c.nextStr}</span>
+          )}
+          {status === "active" && c.nextServiceStr && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand-dark">
+              <CalendarClock className="h-3 w-3" />{L.next} {c.nextServiceStr}
+            </span>
+          )}
+          <span className="text-xs text-gray-400">
+            {status === "quoted"
+              ? `${L.sent} ${c.sentStr}`
+              : c.scheduleStr
+              ? c.scheduleStr
+              : `${L.clientSince} ${c.sinceStr}`}
+          </span>
+        </div>
+      </div>
+    </button>
+  );
 
   return (
     <main className="mx-auto max-w-3xl space-y-7 px-4 py-6 sm:px-6">
@@ -222,57 +281,34 @@ export default function DashboardClient(props: Props) {
       <section>
         <h2 className="mb-3 text-base font-bold text-gray-900">{L.pipeline}</h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {(["quoted", "active"] as ClientStatus[]).map((status) => {
+          {(["quoted", "active"] as ("quoted" | "active")[]).map((status) => {
             const group = filtered.filter((c) => c.status === status);
+            const tint = COLUMN_TINT[status];
             return (
-              <div key={status}>
+              <div key={status} className={`rounded-2xl border p-3 ${tint.panel}`}>
                 <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-700">
-                  <span className={`rounded-full px-2 py-0.5 text-xs ${STATUS_COLOR[status]}`}>{L.status[status]}</span>
+                  <span className={`rounded-full px-2 py-0.5 text-xs ${tint.chip}`}>{L.status[status]}</span>
                   <span className="text-gray-400">({group.length})</span>
                 </div>
                 <div className="max-h-[28rem] space-y-2 overflow-y-auto pr-0.5">
-                  {group.length === 0 && (
-                    <p className="rounded-xl border border-dashed border-gray-200 px-3 py-4 text-sm text-gray-400">
+                  {group.length === 0 ? (
+                    <p className="rounded-xl border border-dashed border-gray-300/70 bg-white/40 px-3 py-4 text-sm text-gray-400">
                       {query || filter !== "all" ? L.noMatches : status === "quoted" ? L.noOpenQuotes : L.noActiveClients}
                     </p>
-                  )}
-                  {group.map((c) => (
-                    <button
-                      key={c.id}
-                      onClick={() => setSelectedId(c.id)}
-                      className="flex w-full items-start gap-3 rounded-2xl border border-gray-100 bg-white p-3 text-left shadow-sm transition hover:border-brand/40 hover:shadow"
-                    >
-                      <Avatar name={c.name} />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-baseline justify-between gap-2">
-                          <span className="truncate font-semibold text-gray-900">{c.name}</span>
-                          <span className="shrink-0 text-sm font-semibold text-gray-900">
-                            {c.amountStr}<span className="font-normal text-gray-400">{c.periodStr}</span>
-                          </span>
+                  ) : status === "active" ? (
+                    activeByDay(group).map(({ day, label, clients }) => (
+                      <div key={day} className="space-y-2">
+                        <div className="sticky top-0 z-10 -mx-0.5 flex items-center gap-2 bg-green-50/90 px-1 py-1 backdrop-blur">
+                          <span className="text-xs font-bold uppercase tracking-wide text-green-800">{label}</span>
+                          <span className="h-px flex-1 bg-green-200/70" />
+                          <span className="text-xs text-green-700/70">{clients.length}</span>
                         </div>
-                        {(c.address || c.service) && (
-                          <p className="mt-0.5 truncate text-sm text-gray-500">{[c.address, c.service].filter(Boolean).join(" · ")}</p>
-                        )}
-                        <div className="mt-2 flex flex-wrap items-center gap-2">
-                          {status === "quoted" && c.nextStr && (
-                            <span className="rounded-full bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand-dark">{L.next} {c.nextStr}</span>
-                          )}
-                          {status === "active" && c.nextServiceStr && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand-dark">
-                              <CalendarClock className="h-3 w-3" />{L.next} {c.nextServiceStr}
-                            </span>
-                          )}
-                          <span className="text-xs text-gray-400">
-                            {status === "quoted"
-                              ? `${L.sent} ${c.sentStr}`
-                              : c.scheduleStr
-                              ? c.scheduleStr
-                              : `${L.clientSince} ${c.sinceStr}`}
-                          </span>
-                        </div>
+                        {clients.map((c) => clientCard(c, "active"))}
                       </div>
-                    </button>
-                  ))}
+                    ))
+                  ) : (
+                    group.map((c) => clientCard(c, "quoted"))
+                  )}
                 </div>
               </div>
             );

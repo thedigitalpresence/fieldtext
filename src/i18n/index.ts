@@ -108,6 +108,7 @@ const en = {
   today: "Today",
   allClearToday: "You're all caught up for today.",
   serviceDue: "Service due",
+  unscheduled: "No day set",
 };
 
 const es: Dict = {
@@ -202,6 +203,7 @@ const es: Dict = {
   today: "Hoy",
   allClearToday: "Estás al día por hoy.",
   serviceDue: "Servicio pendiente",
+  unscheduled: "Sin día",
 };
 
 const DICTS: Record<Lang, Dict> = { en, es };
