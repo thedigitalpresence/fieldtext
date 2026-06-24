@@ -8,7 +8,7 @@ values (
   'green-acres',                       -- TODO: matches DEFAULT_BUSINESS_SLUG
   'Green Acres Landscaping',           -- TODO: real business name
   'Mike',                              -- TODO: real owner first name
-  'America/New_York',                  -- TODO: owner's timezone
+  'America/Los_Angeles',               -- TODO: set your timezone (530 area code → Pacific)
   jsonb_build_object(
     'followup_days', 3,                -- (legacy) nudge window
     'digest_enabled', false,           -- optional morning digest
@@ -23,6 +23,6 @@ on conflict (slug) do nothing;
 -- The owner's REAL cell. Only authorized numbers may text the system, and the
 -- primary one receives reminders, nudges, and the optional digest.
 insert into authorized_phones (business_id, phone, label, is_primary)
-select id, '+15555550100', 'Owner cell', true    -- TODO: owner's REAL cell (E.164)
+select id, '+15306056728', 'Owner cell', true    -- your cell (authorized + reminder recipient)
 from businesses where slug = 'green-acres'
 on conflict (phone) do nothing;

@@ -31,16 +31,24 @@ export const config = {
 
   /** Local test mode: file-backed mock DB instead of Supabase. */
   testMode: () => optional("LOCAL_TEST", "false").toLowerCase() === "true",
-  /** SMS is logged instead of sent (no Twilio) when in test mode / no creds. */
-  smsDryRun: () =>
-    optional("SMS_DRY_RUN").toLowerCase() === "true" ||
-    optional("LOCAL_TEST", "false").toLowerCase() === "true" ||
-    !process.env.TWILIO_ACCOUNT_SID,
-  /** Parse with a built-in heuristic instead of calling Claude (no API key needed). */
-  llmDryRun: () =>
-    optional("LLM_DRY_RUN").toLowerCase() === "true" ||
-    optional("LOCAL_TEST", "false").toLowerCase() === "true" ||
-    !process.env.ANTHROPIC_API_KEY,
+  /**
+   * SMS is logged instead of sent (no Twilio) when in test mode / no creds.
+   * An explicit SMS_DRY_RUN=false ALWAYS sends for real — so you can pair the
+   * mock DB (LOCAL_TEST=true) with real Twilio for a demo.
+   */
+  smsDryRun: () => {
+    const x = optional("SMS_DRY_RUN").toLowerCase();
+    if (x === "false") return false;
+    if (x === "true") return true;
+    return optional("LOCAL_TEST", "false").toLowerCase() === "true" || !process.env.TWILIO_ACCOUNT_SID;
+  },
+  /** Parse with a built-in heuristic instead of Claude. LLM_DRY_RUN=false forces real Claude. */
+  llmDryRun: () => {
+    const x = optional("LLM_DRY_RUN").toLowerCase();
+    if (x === "false") return false;
+    if (x === "true") return true;
+    return optional("LOCAL_TEST", "false").toLowerCase() === "true" || !process.env.ANTHROPIC_API_KEY;
+  },
 
   /** Global kill-switch for usage/cost logging (per-business toggle lives in settings). */
   billingEnabledGlobally: () => optional("BILLING_ENABLED", "true").toLowerCase() !== "false",
