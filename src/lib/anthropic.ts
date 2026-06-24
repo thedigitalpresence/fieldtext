@@ -13,7 +13,7 @@
  */
 import Anthropic from "@anthropic-ai/sdk";
 import { config } from "./config";
-import { normalizeAction, NormalizeContext } from "./normalize";
+import { normalizeAction, normalizeWeekday, NormalizeContext } from "./normalize";
 import type { Intent, ParsedAction, ParseResult, LlmUsage, Lang } from "./types";
 
 export interface ParseContext extends NormalizeContext {
@@ -52,9 +52,12 @@ const ACTION_PROPS = {
   billing_period: { type: "string", enum: ["one_time", "weekly", "biweekly", "monthly"] },
   service_description: { type: "string", description: "Short phrase, e.g. 'full coverage', 'mowing'." },
   status: { type: "string", enum: ["quoted", "active", "completed", "lost"] },
+  service_interval: { type: "string", enum: ["weekly", "biweekly", "monthly"], description: "Recurring service cadence." },
+  service_day: { type: "string", description: "Preferred service day, e.g. 'tuesday'." },
   job_description: { type: "string" },
   performed_on: { type: "string", description: "YYYY-MM-DD" },
   paid_on: { type: "string", description: "YYYY-MM-DD" },
+  payment_status: { type: "string", enum: ["paid", "unpaid", "overdue"], description: "For log_payment: collected=paid, owes=unpaid." },
   reminder_text: { type: "string" },
   due_at: { type: "string", description: "Full ISO 8601 with offset." },
   query_text: { type: "string" },
@@ -94,6 +97,8 @@ function systemPrompt(ctx: ParseContext): string {
     `- billing_period enum: one_time | weekly | biweekly | monthly. ("a month"/"al mes" -> monthly, "every other week"/"cada dos semanas" -> biweekly, "one off"/"una vez" -> one_time).`,
     `- status enum: quoted | active | completed | lost. ("said yes"/"dijo que sí"/"are in"/"empieza" -> active; "declined"/"perdimos"/"lost the X job" -> lost).`,
     `- client_name Title Case; address with standard abbreviations.`,
+    `- recurring service schedule: "every other tuesday"/"weekly on mondays"/"cada dos semanas los martes" -> service_interval (weekly|biweekly|monthly) + service_day. This is the SERVICE cadence, separate from billing_period.`,
+    `- payments: "collected/paid/cobré" -> log_payment payment_status=paid; "owes"/"hasn't paid"/"debe" -> payment_status=unpaid; "overdue/atrasado" -> overdue.`,
     ``,
     `Intents: log_quote, update_status, log_job, log_payment, set_reminder, query (questions like "who do I follow up with?"/"¿a quién doy seguimiento?", "what's my MRR?"), correction (the operator is fixing the last record, e.g. "no it's 333 not 233", "change angela to weekly"), help.`,
     `If a required field is missing or a client is ambiguous, set needs_clarification with ONE short question instead of guessing. If confidence is low, ask rather than write.`,
@@ -211,22 +216,30 @@ function parseClause(text: string, _ctx: ParseContext): Record<string, any> | nu
     return { intent: "set_reminder", confidence: 0.6, reminder_text: body || t, due_at: t };
   }
 
-  // Payment
-  if (/\b(collected|got paid|paid|payment|received|cobr[eé]|recib[ií]|me pag|pag[oó])\b/i.test(lower)) {
+  // Payment (incl. owes / unpaid)
+  if (/\b(collected|got paid|paid|payment|received|owe|owes|unpaid|overdue|cobr[eé]|recib[ií]|me pag|pag[oó]|deben?|atrasad)\b/i.test(lower)) {
     const fromM = t.match(/\b(?:from|a|de)\s+(?:los |las |el |la )?([a-zà-ÿ][a-zà-ÿ .'’-]+)/i);
-    return { intent: "log_payment", confidence: 0.6, amount: t, client_name: cleanName(fromM?.[1]), paid_on: t };
+    const owesM = t.match(/^([a-zà-ÿ][a-zà-ÿ .'’-]+?)\s+(?:owes?|still owes|deben?|no ha pagado|hasn'?t paid)/i);
+    return { intent: "log_payment", confidence: 0.6, amount: t, client_name: cleanName(fromM?.[1] ?? owesM?.[1]), paid_on: t, payment_status: t };
   }
 
   // Quote
   if (/\b(quote|quoted|coti[a-zà-ÿ]*)/i.test(lower)) {
-    return { ...parseQuote(t), intent: "log_quote", confidence: 0.6 };
+    return { ...parseQuote(t), ...extractSchedule(t), intent: "log_quote", confidence: 0.6 };
   }
 
   // Status change (plain language) — must not collide with job verbs
   const looksJob = /\b(mowed|mow|cleanup|clean up|trim|cut|aerat|fertiliz|edg|blew|blow|plant|mulch|did|cort[eé]|pod[eé]|limpi[eé]|hice)\b/i.test(lower);
   if (!looksJob && /\b(accepted|said yes|are in|is in|signed|declined|said no|lost|cancel|dijo que s[ií]|empieza|perdimos|perd[ií]|rechaz|acept)/i.test(lower)) {
     const nameM = t.match(/^(?:mark\s+|lost the\s+|perdimos (?:el|la|a)\s+)?([a-zà-ÿ][a-zà-ÿ .'’-]+?)\b/i);
-    return { intent: "update_status", confidence: 0.55, status: t, client_name: cleanName(nameM?.[1]) };
+    return { intent: "update_status", confidence: 0.55, status: t, client_name: cleanName(nameM?.[1]), ...extractSchedule(t) };
+  }
+
+  // Recurring schedule on an existing client ("bob every other tuesday")
+  const sched = extractSchedule(t);
+  if (!looksJob && sched.service_day) {
+    const nameM = t.match(/^([a-zà-ÿ][a-zà-ÿ .'’-]+?)\b/i);
+    return { intent: "update_status", confidence: 0.5, client_name: cleanName(nameM?.[1]), ...sched };
   }
 
   // Job
@@ -276,6 +289,19 @@ function cleanName(s?: string): string | undefined {
   if (!s) return undefined;
   const n = s.trim().replace(/[.,]+$/, "");
   return n || undefined;
+}
+
+/** Pull a recurring service schedule when a weekday is present (heuristic-safe). */
+function extractSchedule(text: string): { service_interval?: string; service_day?: string } {
+  const day = normalizeWeekday(text);
+  if (!day) return {};
+  const t = text.toLowerCase();
+  const interval = /(every other|bi-?weekly|cada dos|quincenal)/.test(t)
+    ? "biweekly"
+    : /(month|mensual)/.test(t)
+    ? "monthly"
+    : "weekly";
+  return { service_interval: interval, service_day: day };
 }
 
 function heuristicAnswer(dataSnapshot: string): string {

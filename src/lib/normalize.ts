@@ -13,7 +13,7 @@
  * The LLM is told to return canonical values, but we re-run everything here in
  * code and never trust the model blindly.
  */
-import type { BillingPeriod, ClientStatus, ParsedAction } from "./types";
+import type { BillingPeriod, ClientStatus, ParsedAction, ServiceInterval, PaymentStatus } from "./types";
 
 export interface NormalizeContext {
   nowISO: string;
@@ -116,6 +116,71 @@ export function normalizePeriod(input?: string | null): BillingPeriod | undefine
   return undefined;
 }
 
+// ── Recurring service schedule (black book) ───────────────────────────────────
+/** Service cadence — weekly | biweekly | monthly (one-time isn't a recurring service). */
+export function normalizeServiceInterval(input?: string | null): ServiceInterval | undefined {
+  const p = normalizePeriod(input);
+  return p === "weekly" || p === "biweekly" || p === "monthly" ? p : undefined;
+}
+
+const DAY_NAMES: Record<string, string> = {
+  sunday: "sunday", monday: "monday", tuesday: "tuesday", wednesday: "wednesday",
+  thursday: "thursday", friday: "friday", saturday: "saturday",
+  domingo: "sunday", lunes: "monday", martes: "tuesday", miercoles: "wednesday",
+  "miércoles": "wednesday", jueves: "thursday", viernes: "friday", sabado: "saturday", "sábado": "saturday",
+};
+const DAY_INDEX: Record<string, number> = {
+  sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6,
+};
+/** Canonical lowercase english weekday from EN/ES text, e.g. "every other tuesday" -> "tuesday". */
+export function normalizeWeekday(input?: string | null): string | undefined {
+  if (!input) return undefined;
+  const t = input.toLowerCase();
+  for (const [name, canon] of Object.entries(DAY_NAMES)) {
+    if (new RegExp(`\\b${name}\\b`).test(t)) return canon;
+  }
+  return undefined;
+}
+
+/** Next service date (YYYY-MM-DD) from interval + preferred day, relative to `fromISO`. */
+export function computeNextService(
+  interval: ServiceInterval | null | undefined,
+  day: string | null | undefined,
+  fromISO: string
+): string | undefined {
+  if (!interval) return undefined;
+  const now = new Date(fromISO);
+  if (day && DAY_INDEX[day] != null) {
+    const d = new Date(now);
+    const delta = (DAY_INDEX[day] - d.getDay() + 7) % 7 || 7; // next occurrence (not today)
+    d.setDate(d.getDate() + delta);
+    return d.toISOString().slice(0, 10);
+  }
+  const ahead = interval === "weekly" ? 7 : interval === "biweekly" ? 14 : 30;
+  const d = new Date(now);
+  d.setDate(d.getDate() + ahead);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Advance a next-service date by one interval (used when a job is logged). */
+export function advanceService(currentYMD: string, interval: ServiceInterval | null | undefined): string | undefined {
+  if (!interval) return undefined;
+  const ahead = interval === "weekly" ? 7 : interval === "biweekly" ? 14 : 30;
+  const d = new Date(currentYMD + "T00:00:00");
+  d.setDate(d.getDate() + ahead);
+  return d.toISOString().slice(0, 10);
+}
+
+// ── Payment status ────────────────────────────────────────────────────────────
+export function normalizePaymentStatus(input?: string | null): PaymentStatus | undefined {
+  if (!input) return undefined;
+  const t = input.toLowerCase();
+  if (/(overdue|past due|late|atrasad|vencid)/.test(t)) return "overdue";
+  if (/(owes?|owe|unpaid|hasn'?t paid|has not paid|still owes|deben?|no ha pagado|pendiente|por cobrar)/.test(t)) return "unpaid";
+  if (/(paid|collected|received|cobr|recib|pag[oó])/.test(t)) return "paid";
+  return undefined;
+}
+
 // ── Service ───────────────────────────────────────────────────────────────────
 export function normalizeService(s?: string | null): string | undefined {
   if (!s) return undefined;
@@ -196,6 +261,9 @@ export function normalizeAction(raw: Record<string, any>, ctx: NormalizeContext)
   if (raw.billing_period) a.billing_period = normalizePeriod(String(raw.billing_period));
   if (raw.service_description) a.service_description = normalizeService(String(raw.service_description));
   if (raw.status) a.status = normalizeStatus(String(raw.status));
+  if (raw.service_interval) a.service_interval = normalizeServiceInterval(String(raw.service_interval));
+  if (raw.service_day) a.service_day = normalizeWeekday(String(raw.service_day));
+  if (raw.payment_status) a.payment_status = normalizePaymentStatus(String(raw.payment_status));
   if (raw.job_description) a.job_description = String(raw.job_description).trim();
   if (raw.query_text) a.query_text = String(raw.query_text).trim();
   if (raw.reminder_text) a.reminder_text = String(raw.reminder_text).trim().replace(/\s+/g, " ");

@@ -3,6 +3,8 @@ export type MessageDirection = "inbound" | "outbound";
 export type ReminderStatus = "pending" | "sent" | "done" | "cancelled";
 // Canonical billing periods (stored in clients.billing_period). Always normalized.
 export type BillingPeriod = "one_time" | "weekly" | "biweekly" | "monthly";
+export type ServiceInterval = "weekly" | "biweekly" | "monthly";
+export type PaymentStatus = "paid" | "unpaid" | "overdue";
 export type Lang = "en" | "es";
 
 export interface BusinessSettings {
@@ -67,6 +69,10 @@ export interface Client {
   billing_period: string | null;
   notes: string | null;
   last_nudged_at: string | null;
+  // black book: recurring service schedule
+  service_interval: string | null; // weekly | biweekly | monthly
+  service_day: string | null; // lowercase english day, e.g. "tuesday"
+  next_service_on: string | null; // YYYY-MM-DD
   created_at: string;
   updated_at: string;
 }
@@ -86,6 +92,7 @@ export interface Payment {
   client_id: string | null;
   amount: number;
   paid_on: string | null;
+  status: PaymentStatus;
   created_at: string;
 }
 
@@ -138,9 +145,12 @@ export interface ParsedAction {
   billing_period?: BillingPeriod;
   service_description?: string;
   status?: ClientStatus;
+  service_interval?: ServiceInterval; // recurring service cadence
+  service_day?: string; // preferred day (lowercase english)
   job_description?: string;
   performed_on?: string; // YYYY-MM-DD
   paid_on?: string; // YYYY-MM-DD
+  payment_status?: PaymentStatus; // for log_payment
   reminder_text?: string;
   due_at?: string; // ISO 8601
   query_text?: string;

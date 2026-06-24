@@ -163,6 +163,39 @@ test("query stays a query", () => {
   assert.equal(a[0].intent, "query");
 });
 
+// ── Black book: recurring schedule + payment status ───────────────────────────
+test("recurring schedule on a quote", () => {
+  const a = one("quoted bob at 12 oak st for $300/mo full coverage every other tuesday");
+  assert.equal(a[0].intent, "log_quote");
+  assert.equal(a[0].service_interval, "biweekly");
+  assert.equal(a[0].service_day, "tuesday");
+});
+
+test("schedule-only update", () => {
+  const a = one("the garcias every monday");
+  assert.equal(a[0].intent, "update_status");
+  assert.equal(a[0].service_interval, "weekly");
+  assert.equal(a[0].service_day, "monday");
+});
+
+test("payment paid vs owes", () => {
+  const paid = one("collected $450 from bob");
+  assert.equal(paid[0].intent, "log_payment");
+  assert.equal(paid[0].amount, 450);
+  assert.equal(paid[0].payment_status, "paid");
+
+  const owes = one("bob owes $450");
+  assert.equal(owes[0].intent, "log_payment");
+  assert.equal(owes[0].amount, 450);
+  assert.equal(owes[0].payment_status, "unpaid");
+});
+
+test("ES owes (debe)", () => {
+  const a = one("los garcia deben $275");
+  assert.equal(a[0].intent, "log_payment");
+  assert.equal(a[0].payment_status, "unpaid");
+});
+
 // ── Typo'd existing-client fuzzy match ────────────────────────────────────────
 test("fuzzy match tolerates typos (smtih ~ smith)", () => {
   assert.ok(matchScore({ name: "smtih" }, { name: "Smith", address: "12 Oak St" }) > 0);

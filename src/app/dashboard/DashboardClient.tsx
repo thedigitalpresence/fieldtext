@@ -25,6 +25,7 @@ type ClientView = {
   id: string; name: string; address: string | null; status: ClientStatus;
   amountStr: string; periodStr: string; service: string | null; notes: string | null;
   sentStr: string; sinceStr: string; nextStr: string | null;
+  scheduleStr: string | null; nextServiceStr: string | null;
 };
 type Upcoming = {
   id: string; type: "quote" | "manual"; clientId: string | null;
@@ -32,7 +33,7 @@ type Upcoming = {
 };
 type Activity = { id: string; kind: string; text: string; rel: string; exact: string };
 type JobView = { id: string; clientId: string | null; description: string; dateStr: string; who: string | null };
-type PayView = { id: string; clientId: string | null; amountStr: string; dateStr: string; who: string | null };
+type PayView = { id: string; clientId: string | null; amountStr: string; dateStr: string; who: string | null; status: string };
 type RemView = { id: string; clientId: string | null; text: string; dateStr: string; kind: string };
 
 interface Props {
@@ -40,7 +41,7 @@ interface Props {
   subtitle: string;
   lang: Lang;
   labels: Record<string, any>;
-  kpis: { mrr: string; openQuotes: number; potential: string | null; remindersThisWeek: number; activeClients: number };
+  kpis: { mrr: string; openQuotes: number; potential: string | null; remindersThisWeek: number; activeClients: number; outstanding: string | null; scheduledThisWeek: number };
   clients: ClientView[];
   upcoming: Upcoming[];
   activity: Activity[];
@@ -98,9 +99,13 @@ export default function DashboardClient(props: Props) {
       {/* KPIs — 2x2 on mobile, 4 across on desktop */}
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat value={props.kpis.mrr} label={L.monthlyRecurring} />
+        <Stat value={`${props.kpis.activeClients}`} label={L.activeClients} sub={props.kpis.scheduledThisWeek > 0 ? `${props.kpis.scheduledThisWeek} ${L.scheduledThisWeek.toLowerCase()}` : undefined} />
         <Stat value={`${props.kpis.openQuotes}`} label={L.openQuotes} sub={props.kpis.potential ?? undefined} />
-        <Stat value={`${props.kpis.remindersThisWeek}`} label={L.remindersThisWeek} />
-        <Stat value={`${props.kpis.activeClients}`} label={L.activeClients} />
+        {props.kpis.outstanding ? (
+          <Stat value={props.kpis.outstanding} label={L.outstanding} sub={`${props.kpis.remindersThisWeek} ${L.remindersThisWeek.toLowerCase()}`} />
+        ) : (
+          <Stat value={`${props.kpis.remindersThisWeek}`} label={L.remindersThisWeek} />
+        )}
       </section>
 
       {/* Search + filter */}
@@ -162,12 +167,21 @@ export default function DashboardClient(props: Props) {
                       {(c.address || c.service) && (
                         <p className="mt-0.5 truncate text-sm text-gray-500">{[c.address, c.service].filter(Boolean).join(" · ")}</p>
                       )}
-                      <div className="mt-2 flex items-center gap-2">
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
                         {status === "quoted" && c.nextStr && (
                           <span className="rounded-full bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand-dark">{L.next} {c.nextStr}</span>
                         )}
+                        {status === "active" && c.nextServiceStr && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand-dark">
+                            <CalendarClock className="h-3 w-3" />{L.next} {c.nextServiceStr}
+                          </span>
+                        )}
                         <span className="text-xs text-gray-400">
-                          {status === "quoted" ? `${L.sent} ${c.sentStr}` : `${L.clientSince} ${c.sinceStr}`}
+                          {status === "quoted"
+                            ? `${L.sent} ${c.sentStr}`
+                            : c.scheduleStr
+                            ? c.scheduleStr
+                            : `${L.clientSince} ${c.sinceStr}`}
                         </span>
                       </div>
                     </button>
@@ -289,6 +303,8 @@ function ClientDetail({
             <Fact label={L.address} value={client.address || "—"} />
             <Fact label={L.amount} value={client.amountStr === "—" ? "—" : `${client.amountStr}${client.periodStr}`} />
             <Fact label={L.service} value={client.service || "—"} />
+            {client.scheduleStr && <Fact label={L.schedule} value={client.scheduleStr} />}
+            {client.nextServiceStr && <Fact label={L.nextService} value={client.nextServiceStr} />}
           </dl>
 
           {/* Quick actions */}
@@ -333,7 +349,14 @@ function ClientDetail({
 
           {/* Payments */}
           <Group title={L.payments}>
-            {payments.length === 0 ? <p className="text-sm text-gray-400">{L.none}</p> : payments.map((p) => <Row key={p.id} left={p.amountStr} right={p.dateStr} />)}
+            {payments.length === 0 ? <p className="text-sm text-gray-400">{L.none}</p> : payments.map((p) => (
+              <Row
+                key={p.id}
+                left={p.amountStr}
+                right={p.dateStr}
+                sub={p.status === "unpaid" ? L.unpaid : p.status === "overdue" ? L.overdue : undefined}
+              />
+            ))}
           </Group>
         </div>
       </div>

@@ -87,6 +87,8 @@ export default async function DashboardPage() {
   const potential = quoted.reduce((s, c) => s + monthlyEquivalent(c), 0);
   const weekEnd = Date.now() + 7 * 86400000;
   const remindersThisWeek = reminders.filter((r) => new Date(r.due_at).getTime() <= weekEnd).length;
+  const outstanding = payments.filter((p) => p.status === "unpaid" || p.status === "overdue").reduce((s, p) => s + Number(p.amount), 0);
+  const scheduledThisWeek = active.filter((c) => c.next_service_on && new Date(c.next_service_on + "T00:00:00").getTime() <= weekEnd).length;
 
   // Group quote follow-ups + earliest-next per client.
   const quoteSeq = new Map<string, Reminder[]>();
@@ -104,6 +106,9 @@ export default async function DashboardPage() {
     .filter((c) => c.status === "quoted" || c.status === "active")
     .map((c) => {
       const next = quoteSeq.get(c.id)?.[0]?.due_at ?? null;
+      const interval = c.service_interval
+        ? ({ weekly: lang === "es" ? "semanal" : "weekly", biweekly: lang === "es" ? "c/2 sem" : "biweekly", monthly: lang === "es" ? "mensual" : "monthly" } as Record<string, string>)[c.service_interval]
+        : null;
       return {
         id: c.id, name: c.name, address: c.address, status: c.status,
         amountStr: c.amount != null ? money(c.amount) : "—",
@@ -111,6 +116,9 @@ export default async function DashboardPage() {
         service: c.service_description, notes: c.notes,
         sentStr: fmtShort(c.created_at, lang), sinceStr: fmtShort(c.updated_at, lang),
         nextStr: next ? fmtShort(next, lang) : null,
+        // black book: recurring service schedule
+        scheduleStr: interval ? [interval, c.service_day ? c.service_day.charAt(0).toUpperCase() + c.service_day.slice(1) : ""].filter(Boolean).join(" · ") : null,
+        nextServiceStr: c.next_service_on ? fmtShort(c.next_service_on, lang) : null,
       };
     });
 
@@ -138,7 +146,7 @@ export default async function DashboardPage() {
   }));
 
   const jobViews = jobs.map((j) => ({ id: j.id, clientId: j.client_id, description: j.description, dateStr: fmtShort(j.performed_on, lang), who: j.client_id ? nameOf(j.client_id) : null }));
-  const payViews = payments.map((p) => ({ id: p.id, clientId: p.client_id, amountStr: money(p.amount), dateStr: fmtShort(p.paid_on ?? p.created_at, lang), who: p.client_id ? nameOf(p.client_id) : null }));
+  const payViews = payments.map((p) => ({ id: p.id, clientId: p.client_id, amountStr: money(p.amount), dateStr: fmtShort(p.paid_on ?? p.created_at, lang), who: p.client_id ? nameOf(p.client_id) : null, status: p.status ?? "paid" }));
   const reminderViews = reminders.map((r) => ({ id: r.id, clientId: r.client_id, text: r.text, dateStr: fmtShort(r.due_at, lang), kind: r.kind }));
 
   // Plain-string label bag for the client component (no function values).
@@ -153,6 +161,8 @@ export default async function DashboardPage() {
     addReminder: d.addReminder, logPayment: d.logPayment, notePlaceholder: d.notePlaceholder, reminderTextPlaceholder: d.reminderTextPlaceholder,
     amountPlaceholder: d.amountPlaceholder, save: d.save, snooze: d.snooze, done: d.done, cancel: d.cancel, language: d.language,
     monthlyRecurring: d.monthlyRecurring, openQuotes: d.openQuotes, remindersThisWeek: d.remindersThisWeek, activeClients: d.activeClients,
+    outstanding: d.outstanding, nextService: d.nextService, schedule: d.schedule, scheduledThisWeek: d.scheduledThisWeek,
+    paid: d.paid, unpaid: d.unpaid, overdue: d.overdue,
     moreDatesOne: d.moreDates(1).replace(/\d+\s*/, ""), // "more date"/"fecha más" suffix
   };
 
@@ -168,6 +178,8 @@ export default async function DashboardPage() {
         potential: potential > 0 ? d.potential(money(Math.round(potential))) : null,
         remindersThisWeek,
         activeClients: active.length,
+        outstanding: outstanding > 0 ? money(Math.round(outstanding)) : null,
+        scheduledThisWeek,
       }}
       clients={clientViews}
       upcoming={upcoming}

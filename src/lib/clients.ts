@@ -106,6 +106,9 @@ export async function createClient(
       amount: fields.amount ?? null,
       billing_period: fields.billing_period ?? null,
       notes: fields.notes ?? null,
+      service_interval: fields.service_interval ?? null,
+      service_day: fields.service_day ?? null,
+      next_service_on: fields.next_service_on ?? null,
       updated_at: now,
     })
     .select("*")
