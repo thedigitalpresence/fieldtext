@@ -105,6 +105,9 @@ const en = {
   colService: "Service",
   firstRunTitle: "Start your black book",
   firstRunBody: "Load your existing clients in one sitting — paste a list, upload a CSV, or snap a photo of your client sheet.",
+  today: "Today",
+  allClearToday: "You're all caught up for today.",
+  serviceDue: "Service due",
 };
 
 const es: Dict = {
@@ -196,6 +199,9 @@ const es: Dict = {
   colService: "Servicio",
   firstRunTitle: "Empieza tu libreta",
   firstRunBody: "Carga tus clientes existentes de una sentada — pega una lista, sube un CSV o toma una foto de tu hoja de clientes.",
+  today: "Hoy",
+  allClearToday: "Estás al día por hoy.",
+  serviceDue: "Servicio pendiente",
 };
 
 const DICTS: Record<Lang, Dict> = { en, es };

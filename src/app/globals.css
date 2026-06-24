@@ -3,5 +3,5 @@
 @tailwind utilities;
 
 :root { color-scheme: light; }
-/* warm neutral background for a light landscaping feel */
-body { @apply bg-stone-50 text-gray-900 antialiased; }
+/* cool sage background for a clean, outdoor landscaping feel */
+body { @apply bg-canvas text-gray-900 antialiased; }

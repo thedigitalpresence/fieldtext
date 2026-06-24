@@ -6,6 +6,7 @@ const config: Config = {
     extend: {
       colors: {
         brand: { DEFAULT: "#15803d", dark: "#166534" }, // refined landscaping green
+        canvas: "#F4F6F2", // cool sage page background
       },
     },
   },

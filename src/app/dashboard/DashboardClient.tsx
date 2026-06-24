@@ -43,6 +43,11 @@ interface Props {
   lang: Lang;
   labels: Record<string, any>;
   kpis: { mrr: string; openQuotes: number; potential: string | null; remindersThisWeek: number; activeClients: number; outstanding: string | null; scheduledThisWeek: number };
+  today: {
+    dateStr: string;
+    services: { id: string; name: string; address: string | null; overdue: boolean }[];
+    reminders: { id: string; clientId: string | null; text: string; who: string | null; overdue: boolean }[];
+  };
   clients: ClientView[];
   upcoming: Upcoming[];
   activity: Activity[];
@@ -96,6 +101,47 @@ export default function DashboardClient(props: Props) {
           </form>
         </div>
       </header>
+
+      {/* Today focus strip */}
+      <section className="overflow-hidden rounded-2xl border border-brand/20 bg-white shadow-sm">
+        <div className="flex items-center gap-2 border-b border-gray-100 bg-brand/5 px-4 py-2.5">
+          <CalendarClock className="h-4 w-4 text-brand-dark" />
+          <span className="text-sm font-bold text-brand-dark">{L.today}</span>
+          <span className="text-sm text-gray-500">· {props.today.dateStr}</span>
+        </div>
+        {props.today.services.length === 0 && props.today.reminders.length === 0 ? (
+          <p className="px-4 py-4 text-sm text-gray-400">{L.allClearToday}</p>
+        ) : (
+          <ul className="divide-y divide-gray-50">
+            {props.today.services.map((s) => (
+              <li key={`s-${s.id}`}>
+                <button onClick={() => setSelectedId(s.id)} className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-gray-50">
+                  <CalendarClock className="h-4 w-4 shrink-0 text-brand" />
+                  <span className="min-w-0 flex-1">
+                    <span className="truncate font-medium text-gray-900">{s.name}</span>
+                    {s.address && <span className="ml-2 text-sm text-gray-400">{s.address}</span>}
+                  </span>
+                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${s.overdue ? "bg-red-100 text-red-700" : "bg-brand/10 text-brand-dark"}`}>
+                    {s.overdue ? L.overdue : L.serviceDue}
+                  </span>
+                </button>
+              </li>
+            ))}
+            {props.today.reminders.map((r) => (
+              <li key={`r-${r.id}`}>
+                <button onClick={() => r.clientId && setSelectedId(r.clientId)} disabled={!r.clientId} className="flex w-full items-center gap-3 px-4 py-2.5 text-left enabled:hover:bg-gray-50">
+                  <Bell className="h-4 w-4 shrink-0 text-amber-500" />
+                  <span className="min-w-0 flex-1">
+                    <span className="break-words font-medium text-gray-900">{r.text}</span>
+                    {r.who && <span className="ml-2 text-sm text-gray-400">{r.who}</span>}
+                  </span>
+                  {r.overdue && <span className="shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">{L.overdue}</span>}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       {/* KPIs — 2x2 on mobile, 4 across on desktop */}
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">

@@ -90,6 +90,26 @@ export default async function DashboardPage() {
   const outstanding = payments.filter((p) => p.status === "unpaid" || p.status === "overdue").reduce((s, p) => s + Number(p.amount), 0);
   const scheduledThisWeek = active.filter((c) => c.next_service_on && new Date(c.next_service_on + "T00:00:00").getTime() <= weekEnd).length;
 
+  // ── Today focus strip: services + reminders due today (or overdue) ──────────
+  const tz = business.timezone || "America/New_York";
+  const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: tz }); // YYYY-MM-DD
+  const todayServices = active
+    .filter((c) => c.next_service_on && c.next_service_on <= todayStr)
+    .map((c) => ({ id: c.id, name: c.name, address: c.address, overdue: (c.next_service_on as string) < todayStr }))
+    .sort((a, b) => Number(b.overdue) - Number(a.overdue));
+  const todayReminders = reminders
+    .filter((r) => new Date(r.due_at).toLocaleDateString("en-CA", { timeZone: tz }) <= todayStr)
+    .map((r) => ({
+      id: r.id, clientId: r.client_id, text: r.text,
+      who: r.client_id ? nameOf(r.client_id) : null,
+      overdue: new Date(r.due_at).toLocaleDateString("en-CA", { timeZone: tz }) < todayStr,
+    }));
+  const todayStrip = {
+    dateStr: new Date(todayStr + "T00:00:00").toLocaleDateString(lang === "es" ? "es-ES" : "en-US", { weekday: "long", month: "short", day: "numeric" }),
+    services: todayServices,
+    reminders: todayReminders,
+  };
+
   // Group quote follow-ups + earliest-next per client.
   const quoteSeq = new Map<string, Reminder[]>();
   const manual: Reminder[] = [];
@@ -164,6 +184,7 @@ export default async function DashboardPage() {
     outstanding: d.outstanding, nextService: d.nextService, schedule: d.schedule, scheduledThisWeek: d.scheduledThisWeek,
     paid: d.paid, unpaid: d.unpaid, overdue: d.overdue,
     importClients: d.importClients, firstRunTitle: d.firstRunTitle, firstRunBody: d.firstRunBody,
+    today: d.today, allClearToday: d.allClearToday, serviceDue: d.serviceDue,
     moreDatesOne: d.moreDates(1).replace(/\d+\s*/, ""), // "more date"/"fecha más" suffix
   };
 
@@ -182,6 +203,7 @@ export default async function DashboardPage() {
         outstanding: outstanding > 0 ? money(Math.round(outstanding)) : null,
         scheduledThisWeek,
       }}
+      today={todayStrip}
       clients={clientViews}
       upcoming={upcoming}
       activity={activity}
