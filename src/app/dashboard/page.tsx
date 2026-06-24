@@ -163,6 +163,7 @@ export default async function DashboardPage() {
     monthlyRecurring: d.monthlyRecurring, openQuotes: d.openQuotes, remindersThisWeek: d.remindersThisWeek, activeClients: d.activeClients,
     outstanding: d.outstanding, nextService: d.nextService, schedule: d.schedule, scheduledThisWeek: d.scheduledThisWeek,
     paid: d.paid, unpaid: d.unpaid, overdue: d.overdue,
+    importClients: d.importClients, firstRunTitle: d.firstRunTitle, firstRunBody: d.firstRunBody,
     moreDatesOne: d.moreDates(1).replace(/\d+\s*/, ""), // "more date"/"fecha más" suffix
   };
 

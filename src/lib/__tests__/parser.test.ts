@@ -196,6 +196,33 @@ test("ES owes (debe)", () => {
   assert.equal(a[0].payment_status, "unpaid");
 });
 
+// ── Import: bulk text + CSV ───────────────────────────────────────────────────
+import { parseTextHeuristic, parseCsv } from "../import";
+
+test("bulk text import -> drafts", () => {
+  const ds = parseTextHeuristic("smiths 12 oak 300/mo mowing\njane doe 5 elm 200 mowing\ngarcia 8 pine 275 full coverage");
+  assert.equal(ds.length, 3);
+  assert.equal(ds[0].name, "Smiths");
+  assert.equal(ds[0].address, "12 Oak");
+  assert.equal(ds[0].amount, 300);
+  assert.equal(ds[0].billing_period, "monthly");
+  assert.equal(ds[0].service_description, "mowing");
+  assert.equal(ds[1].name, "Jane Doe");
+  assert.equal(ds[1].amount, 200);
+  assert.equal(ds[2].name, "Garcia");
+  assert.equal(ds[2].amount, 275);
+  assert.equal(ds[2].service_description, "full coverage");
+  assert.equal(ds[0].status, "active"); // imports default to active
+});
+
+test("CSV import with headers", () => {
+  const ds = parseCsv("name,address,amount,service\nThe Smiths,12 Oak St,300,mowing\nJane Doe,5 Elm St,200,weekly mow");
+  assert.equal(ds.length, 2);
+  assert.equal(ds[0].name, "The Smiths");
+  assert.equal(ds[0].address, "12 Oak St");
+  assert.equal(ds[0].amount, 300);
+});
+
 // ── Typo'd existing-client fuzzy match ────────────────────────────────────────
 test("fuzzy match tolerates typos (smtih ~ smith)", () => {
   assert.ok(matchScore({ name: "smtih" }, { name: "Smith", address: "12 Oak St" }) > 0);

@@ -158,6 +158,18 @@ export interface ParsedAction {
   correction_text?: string;
 }
 
+/** A draft client produced by import (text / CSV / photo), reviewed before saving. */
+export interface ClientDraft {
+  name: string;
+  address?: string;
+  amount?: number;
+  billing_period?: BillingPeriod;
+  service_description?: string;
+  service_interval?: ServiceInterval;
+  service_day?: string;
+  status?: ClientStatus;
+}
+
 /** Result of parsing one inbound message — supports multiple actions. */
 export interface ParseResult {
   actions: ParsedAction[];

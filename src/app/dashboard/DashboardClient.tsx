@@ -1,9 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import {
   FileText, UserCheck, Briefcase, DollarSign, Bell, MessageCircle, Languages,
-  CalendarClock, Search, X, Check, Clock, Ban,
+  CalendarClock, Search, X, Check, Clock, Ban, Upload,
 } from "lucide-react";
 import type { ClientStatus, Lang } from "@/lib/types";
 import {
@@ -108,7 +109,20 @@ export default function DashboardClient(props: Props) {
         )}
       </section>
 
-      {/* Search + filter */}
+      {/* First-run onboarding — empty book -> import CTA */}
+      {props.clients.length === 0 && (
+        <Link href="/dashboard/import" className="block rounded-2xl border border-brand/30 bg-brand/5 p-4 shadow-sm transition hover:border-brand/50">
+          <div className="flex items-center gap-3">
+            <Upload className="h-6 w-6 shrink-0 text-brand-dark" />
+            <div className="min-w-0">
+              <p className="font-semibold text-brand-dark">{L.firstRunTitle}</p>
+              <p className="text-sm text-gray-600">{L.firstRunBody}</p>
+            </div>
+          </div>
+        </Link>
+      )}
+
+      {/* Search + filter + import */}
       <section className="space-y-3">
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
@@ -120,6 +134,13 @@ export default function DashboardClient(props: Props) {
               className={`w-full rounded-xl border border-gray-200 bg-white pl-9 pr-3 ${TAP} text-sm shadow-sm focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand`}
             />
           </div>
+          <Link
+            href="/dashboard/import"
+            title={L.importClients}
+            className={`flex ${TAP} shrink-0 items-center gap-1.5 rounded-xl bg-brand px-3 text-sm font-medium text-white hover:bg-brand-dark`}
+          >
+            <Upload className="h-4 w-4" /><span className="hidden sm:inline">{L.importClients}</span>
+          </Link>
         </div>
         <div className="flex flex-wrap gap-2">
           {([["all", L.all], ["quoted", L.status.quoted], ["active", L.status.active]] as const).map(([key, lbl]) => (
