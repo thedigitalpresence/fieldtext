@@ -189,7 +189,13 @@ export function normalizeService(s?: string | null): string | undefined {
     .replace(/\s+/g, " ")
     .replace(/^[\s.,;·-]+/, "") // leading punctuation ("for $250 a month, mowing" -> "mowing")
     .replace(/^(for|de|para)\s+/i, "")
+    // strip a recurring-schedule phrase that belongs in service_interval/day, not here
+    .replace(/\b(every\s+other|every|each|cada(\s+dos)?)\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday|lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo|week|month|semanas?|semana|mes)\b/gi, "")
+    .replace(/\b(weekly|bi-?weekly|biweekly|monthly|semanal|quincenal|mensual)\b/gi, "")
+    .replace(/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo)\b/gi, "")
     .replace(/[.,;]+$/, "")
+    .replace(/\s+/g, " ")
+    .trim()
     .toLowerCase();
   return cleaned || undefined;
 }
