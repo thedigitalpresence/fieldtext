@@ -42,7 +42,7 @@ export default function TermsPage() {
 
         <Section title="Contact">
           Questions? Email{" "}
-          <a className="text-brand underline" href="mailto:eashackelford@gmail.com">eashackelford@gmail.com</a>.
+          <a className="text-brand underline" href="mailto:eric@fieldtextapp.com">eric@fieldtextapp.com</a>.
         </Section>
       </div>
     </main>
