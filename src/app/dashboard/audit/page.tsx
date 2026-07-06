@@ -4,7 +4,8 @@
  * Compiled July 3, 2026 from a 3-agent deep audit (security, code quality,
  * product/launch) + live production probes. Owner-facing, plain English.
  */
-import { ShieldCheck, AlertTriangle, Wrench, Sparkles, CheckCircle2, Clock3, Leaf } from "lucide-react";
+import Link from "next/link";
+import { ShieldCheck, AlertTriangle, Wrench, Sparkles, CheckCircle2, Clock3, Leaf, Compass } from "lucide-react";
 
 export const metadata = { title: "FieldText — Internal Audit", robots: { index: false, follow: false } };
 
@@ -263,13 +264,18 @@ export default function AuditPage() {
   return (
     <main className="mx-auto max-w-5xl space-y-8 px-4 py-8 sm:px-6">
       {/* Header */}
-      <header className="flex items-start gap-3">
-        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand text-white shadow-sm"><Leaf className="h-6 w-6" /></span>
-        <div>
-          <p className="text-xs font-bold uppercase tracking-widest text-brand-dark">Internal · not linked anywhere</p>
-          <h1 className="text-2xl font-bold tracking-tight text-gray-900">FieldText — Full Audit</h1>
-          <p className="mt-0.5 text-sm text-gray-500">Deep dive of code, security, and launch readiness · July 3, 2026 · 3 independent review passes + live production probes</p>
+      <header className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand text-white shadow-sm"><Leaf className="h-6 w-6" /></span>
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest text-brand-dark">Internal · not linked anywhere</p>
+            <h1 className="text-2xl font-bold tracking-tight text-gray-900">FieldText — Full Audit</h1>
+            <p className="mt-0.5 text-sm text-gray-500">Deep dive of code, security, and launch readiness · July 3, 2026 · 3 independent review passes + live production probes</p>
+          </div>
         </div>
+        <Link href="/dashboard/roadmap" className="flex shrink-0 items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:border-brand/40">
+          <Compass className="h-4 w-4 text-brand-dark" /><span className="hidden sm:inline">Roadmap</span>
+        </Link>
       </header>
 
       {/* Verdict */}
