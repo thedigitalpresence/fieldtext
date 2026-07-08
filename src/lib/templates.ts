@@ -48,8 +48,8 @@ export function clientSummary(c: Pick<Client, "name" | "address" | "amount" | "b
 export const t = {
   quoteLogged: (summary: string, lang: Lang) =>
     lang === "es"
-      ? `Listo ✅ ${summary}. Responde "no" para corregir.`
-      : `Got it ✅ ${summary}. Reply "no" to fix.`,
+      ? `Listo ✅ ${summary}. Responde "corrige" para corregir.`
+      : `Got it ✅ ${summary}. Reply "fix" to correct.`,
 
   statusUpdated: (name: string, status: ClientStatus, lang: Lang) =>
     lang === "es"
@@ -59,10 +59,10 @@ export const t = {
   // Distinct copy per outcome — a routine "job done" must never read like a delete.
   clientCompleted: (name: string, lang: Lang) =>
     lang === "es"
-      ? `Marqué a ${name} como completado ✅ (ya no está en tu lista activa). Si querías registrar una visita, responde "fix".`
+      ? `Marqué a ${name} como completado ✅ (ya no está en tu lista activa). Si querías registrar una visita, responde "corrige".`
       : `Marked ${name} completed ✅ (off your active list). If you meant a finished visit, reply "fix".`,
   clientLost: (name: string, lang: Lang) =>
-    lang === "es" ? `Marqué a ${name} como perdido. Responde "fix" para corregir.` : `Marked ${name} lost. Reply "fix" to correct.`,
+    lang === "es" ? `Marqué a ${name} como perdido. Responde "corrige" para corregir.` : `Marked ${name} lost. Reply "fix" to correct.`,
 
   jobLogged: (desc: string, who: string, date: string, lang: Lang) =>
     lang === "es" ? `Registrado ✅ ${desc} ${who} el ${date}.` : `Logged ✅ ${desc} ${who} on ${date}.`,
