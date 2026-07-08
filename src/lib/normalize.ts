@@ -39,7 +39,11 @@ export function titleCase(s: string): string {
 }
 export function normalizeName(s?: string | null): string | undefined {
   if (!s) return undefined;
-  const n = titleCase(s);
+  // Courtesy words are never part of a name ("New job Eric Mitchell please").
+  const cleaned = s
+    .replace(/[,.]?\s*\b(please|por favor|thanks|thank you|gracias|pls|plz)\b\s*$/i, "")
+    .trim();
+  const n = titleCase(cleaned);
   return n || undefined;
 }
 

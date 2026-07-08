@@ -226,8 +226,12 @@ export async function resolvePending(
         patch.address = normalizeAddress(rest);
       } else if (missing.includes("name") && !/\d/.test(rest) && rest.split(/\s+/).length <= 4) {
         patch.name = normalizeName(rest);
-      } else if (missing.includes("address")) {
+      } else if (missing.includes("address") && !missing.includes("service")) {
         patch.address = normalizeAddress(rest); // street without a number still counts
+      } else if (missing.includes("service")) {
+        patch.service_description = rest.toLowerCase();
+      } else if (missing.includes("address")) {
+        patch.address = normalizeAddress(rest);
       }
     }
     if (!Object.keys(patch).length) return null; // unrelated text — parse normally
@@ -238,12 +242,16 @@ export async function resolvePending(
     const client = (await updateClient(clientId, patch)) ?? before;
 
     const stillMissing = missing.filter((m) =>
-      m === "phone" ? !client.phone : m === "address" ? !client.address : client.name.trim().split(/\s+/).length < 2
+      m === "phone" ? !client.phone
+      : m === "address" ? !client.address
+      : m === "service" ? !client.service_description
+      : client.name.trim().split(/\s+/).length < 2
     );
     const savedBits = [
       patch.name ? client.name : null,
       patch.address ? client.address : null,
       patch.phone ? `📞 ${client.phone}` : null,
+      patch.service_description ? client.service_description : null,
     ].filter(Boolean).join(" · ");
     if (stillMissing.length) {
       session.pending = { kind: "complete_client", action: pending.action, missing: stillMissing, expiresAt: pendingExpiry() };
@@ -344,12 +352,13 @@ async function logQuote(business: Business, p: ParsedAction, ctx: ParseContext, 
   else await cancelQuoteReminders(client.id);
 
   // Missing the price? Save what we have, remember the question, ask for it.
+  // (client_is_new keeps the completeness chase alive after the price arrives.)
   if (client.amount == null) {
-    session.pending = { kind: "missing_amount", action: { ...p, client_id: client.id }, expiresAt: pendingExpiry() };
+    session.pending = { kind: "missing_amount", action: { ...p, client_id: client.id, client_is_new: isNew }, expiresAt: pendingExpiry() };
     return t.whatAmount(client.name, lang);
   }
 
-  // Completeness rule: a NEW client should have a full name, address, and phone.
+  // Mandatory profile for a NEW client: full name, address, phone, service.
   // Save what we have, then chase what's missing in one question.
   const confirmation = t.quoteLogged(clientSummary(client, lang), lang);
   if (isNew) {
@@ -357,6 +366,7 @@ async function logQuote(business: Business, p: ParsedAction, ctx: ParseContext, 
     if (client.name.trim().split(/\s+/).length < 2) missing.push("name");
     if (!client.address) missing.push("address");
     if (!client.phone) missing.push("phone");
+    if (!client.service_description) missing.push("service");
     if (missing.length) {
       session.pending = { kind: "complete_client", action: { ...p, client_id: client.id }, missing, expiresAt: pendingExpiry() };
       return `${confirmation}\n${t.needInfo(client.name, missing, lang)}`;

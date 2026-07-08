@@ -6,6 +6,18 @@ function norm(s: string | null | undefined): string {
   return (s ?? "").toLowerCase().replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").trim();
 }
 
+// Articles/honorifics carry no identity: "los garcia" must match "Dee Garcia".
+const NAME_NOISE = new Set(["the", "los", "las", "el", "la", "mr", "mrs", "ms", "dr", "sr", "sra", "don", "dona"]);
+function nameTokens(s: string): string[] {
+  return s.split(" ").filter((t) => t && !NAME_NOISE.has(t));
+}
+/** Typo tolerance scaled to length, first letter must agree ("gary" ≠ "mary"). */
+function typoClose(a: string, b: string): boolean {
+  if (a.length < 4 || b.length < 4 || a[0] !== b[0]) return false;
+  const budget = Math.min(a.length, b.length) >= 5 ? 2 : 1; // "smtih"~"smith" (transposition = 2 edits)
+  return levenshtein(a, b) <= budget;
+}
+
 // Common street words carry no identifying signal — two unrelated addresses both
 // containing "st" must NOT be treated as a match.
 const ADDR_STOPWORDS = new Set([
@@ -73,22 +85,46 @@ function score(c: Client, qName: string, qAddr: string): number {
   let s = 0;
   if (qName) {
     const cName = norm(c.name);
-    if (cName === qName) s += 5;
-    else if (cName.includes(qName) || qName.includes(cName)) s += 3;
+    let nameScore = 0;
+    if (cName === qName) nameScore = 5;
+    else if (cName.includes(qName) || qName.includes(cName)) nameScore = 3;
     else {
-      const cT = cName.split(" ");
-      const cSet = new Set(cT);
-      const overlap = qName.split(" ").filter((t) => t.length > 1 && t !== "the" && cSet.has(t)).length;
-      s += overlap * 2;
-      // Typo tolerance: a query token within small edit distance of a candidate
-      // token counts (smtih ~ smith). Only for tokens long enough to be meaningful.
-      if (overlap === 0) {
-        for (const qt of qName.split(" ")) {
-          if (qt.length < 4 || qt === "the") continue;
-          if (cT.some((ct) => ct.length >= 4 && levenshtein(qt, ct) <= 2)) { s += 2; break; }
+      const qT = nameTokens(qName);
+      const cT = nameTokens(cName);
+
+      if (qT.length >= 2 && cT.length >= 2) {
+        // Both are FULL names: identity lives in the LAST name. Different last
+        // names = different people — "Eric Mitchell" must never surface
+        // "Eric Shackelford", no matter how many Erics are in the book.
+        const qLast = qT[qT.length - 1];
+        const cLast = cT[cT.length - 1];
+        const lastMatch = qLast === cLast || typoClose(qLast, cLast);
+        if (lastMatch) {
+          const qFirst = qT[0];
+          const cFirst = cT[0];
+          const firstMatch = qFirst === cFirst || typoClose(qFirst, cFirst);
+          // Same full name (modulo typos) = strong; same family only = weak (confirm).
+          nameScore = firstMatch ? 4 : 2;
+        }
+        // else: 0 — not a candidate.
+      } else {
+        // Single-token query ("garcia", "smtih"): an exact surname hit is a
+        // strong identity signal (two Garcias still trigger the ambiguity ask);
+        // a typo hit stays weak (confirm first).
+        const cSet = new Set(cT);
+        const overlap = qT.filter((t) => t.length > 1 && cSet.has(t)).length;
+        nameScore = overlap * 3;
+        if (overlap === 0) {
+          for (const qt of qT) {
+            if (cT.some((ct) => typoClose(qt, ct))) { nameScore = 2; break; }
+          }
         }
       }
     }
+    // A FULL-name mismatch is a veto: "Eric Mitchell at 5 Oak St" must never
+    // surface "The Smiths at 12 Oak St" off street-word overlap.
+    if (nameScore === 0 && nameTokens(qName).length >= 2) return 0;
+    s += nameScore;
   }
   if (qAddr && c.address) {
     const cAddr = norm(c.address);

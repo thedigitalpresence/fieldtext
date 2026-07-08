@@ -135,7 +135,11 @@ function systemPrompt(ctx: ParseContext): string {
     `- If they paid by a method ("bob venmoed 300", "paid cash") set payment_method.`,
     `- Requests you have no intent for (delete a record, edit an old job): set needs_clarification saying what to do instead — never force the nearest intent.`,
     `- A bare "no", "fix", "wrong", or "that's not right" (the owner rejecting the last confirmation) = correction intent with correction_text set to their message. NEVER answer these with needs_clarification.`,
-    `If a required field is missing or a client is ambiguous, set needs_clarification with ONE short question instead of guessing. If confidence is low, ask rather than write.`,
+    ``,
+    `needs_clarification rules — the app has its own follow-up system, so stay out of its lane:`,
+    `- NEVER ask about client identity or suggest existing client names ("do you mean X?") — extract the name EXACTLY as texted; the app confirms matches itself.`,
+    `- NEVER ask for missing fields (address, phone, price, service) on log_quote or new-client texts — return the action with whatever fields are present; the app chases the rest one question at a time.`,
+    `- needs_clarification is ONLY for a genuinely unreadable intent. When in doubt between asking and returning a partial action, return the partial action.`,
   ].join("\n");
 }
 
@@ -302,7 +306,10 @@ function parseClause(text: string, _ctx: ParseContext): Record<string, any> | nu
   if (/\b(collected|got paid|paid|payment|received|venmo(ed|'d)?|zelled?|owe|owes|unpaid|overdue|cobr[eé]|recib[ií]|me pag|pag[oó]|deben?|atrasad)\b/i.test(lower)) {
     const fromM = t.match(/\b(?:from|a|de)\s+(?:los |las |el |la )?([a-zà-ÿ][a-zà-ÿ .'’-]+)/i);
     const owesM = t.match(/^([a-zà-ÿ][a-zà-ÿ .'’-]+?)\s+(?:owes?|still owes|deben?|no ha pagado|hasn'?t paid)/i);
-    return { intent: "log_payment", confidence: 0.6, amount: t, client_name: cleanName(fromM?.[1] ?? owesM?.[1]), paid_on: t, payment_status: t, payment_method: t };
+    // Leading-name form: "the smiths paid 200", "bob venmoed 300"
+    const leadM = t.match(/^(?:the |los |las |el |la )?([a-zà-ÿ][a-zà-ÿ .'’-]+?)\s+(?:paid|pag[oó]|venmo(?:ed|'d)?|zelled)\b/i);
+    const name = fromM?.[1] ?? owesM?.[1] ?? (leadM && !/^(got|collected|received|me)$/i.test(leadM[1].trim()) ? (t.match(/^the /i) ? `the ${leadM[1]}` : leadM[1]) : undefined);
+    return { intent: "log_payment", confidence: 0.6, amount: t, client_name: cleanName(name), paid_on: t, payment_status: t, payment_method: t };
   }
 
   // Quote — incl. "new job/client <name> ... $X a week" (a new engagement, not a work log)
@@ -315,10 +322,17 @@ function parseClause(text: string, _ctx: ParseContext): Record<string, any> | nu
     const verbM = newJobM[1].match(/^(.+?)\s+(?:has|wants|needs|got|gets|tiene|quiere)\b\s*(.*)$/i);
     if (verbM) {
       const service = verbM[2].replace(/\bfor\b.*$/i, "").replace(/^(a|an|un|una)\s+/i, "").trim();
+      // "Maria Rivera at 42 maple st has mowing..." — peel the address off the name.
+      let namePart = verbM[1];
+      let address: string | undefined;
+      const atM = namePart.match(/^(.*?)\s+(?:at|en|@)\s+(.+)$/i);
+      if (atM) { namePart = atM[1]; address = atM[2].trim(); }
       return {
         intent: "log_quote", confidence: 0.6, status: "active", // "new job" = won work
-        client_name: cleanName(verbM[1]),
-        amount: t, billing_period: t,
+        client_name: cleanName(namePart),
+        address,
+        // Only the post-verb part can hold the price — never the house number.
+        amount: verbM[2], billing_period: verbM[2],
         service_description: service || undefined,
         ...extractSchedule(t),
       };
@@ -385,7 +399,22 @@ function parseQuote(text: string): Record<string, any> {
     }
     service = after;
   } else {
-    name = s;
+    // No price in the text — still split "name at address for service".
+    const atM = s.match(/^(.*?)\s+(?:at|en|@)\s+(.+)$/i);
+    if (atM) {
+      name = atM[1];
+      const rest = atM[2].split(/\s+(?:for|por)\s+/i);
+      address = rest[0].replace(/[^a-z0-9]+$/i, "").trim();
+      service = rest.slice(1).join(" ") || undefined;
+    } else {
+      const forM = s.match(/^(.*?)\s+(?:for|por)\s+(.+)$/i);
+      if (forM) {
+        name = forM[1];
+        service = forM[2];
+      } else {
+        name = s;
+      }
+    }
   }
   return {
     client_name: cleanName(name),
