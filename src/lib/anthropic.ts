@@ -129,6 +129,8 @@ function systemPrompt(ctx: ParseContext): string {
     ``,
     `CRITICAL guardrails:`,
     `- "finished/done/wrapped up" + work words ("finished mowing at the smiths") = log_job, NOT update_status completed. Only mark completed/lost when the RELATIONSHIP ends ("we're done with the smiths for good", "lost the jones account").`,
+    `- "new job/new client <Name> ... $X a week/month" or ANY new recurring arrangement = log_quote (a new client engagement with amount + billing_period), NOT log_job. log_job is only for work already done or a dated one-off visit.`,
+    `- Use the client name EXACTLY as texted (e.g. "Eric Shackelford" stays Eric) — NEVER substitute a similar known client's name; the app confirms matches itself.`,
     `- One-off future work with a price ("mulch at the smiths next tuesday $450") = log_job with scheduled_on + amount.`,
     `- If they paid by a method ("bob venmoed 300", "paid cash") set payment_method.`,
     `- Requests you have no intent for (delete a record, edit an old job): set needs_clarification saying what to do instead — never force the nearest intent.`,
@@ -303,9 +305,25 @@ function parseClause(text: string, _ctx: ParseContext): Record<string, any> | nu
     return { intent: "log_payment", confidence: 0.6, amount: t, client_name: cleanName(fromM?.[1] ?? owesM?.[1]), paid_on: t, payment_status: t, payment_method: t };
   }
 
-  // Quote
+  // Quote — incl. "new job/client <name> ... $X a week" (a new engagement, not a work log)
   if (/\b(quote|quoted|coti[a-zà-ÿ]*)/i.test(lower)) {
     return { ...parseQuote(t), ...extractSchedule(t), intent: "log_quote", confidence: 0.6 };
+  }
+  const newJobM = t.match(/^new (?:job|client|account|customer)[:,]?\s+(.+)$/i);
+  if (newJobM) {
+    // "<name> has/wants <service> for $X a week" — name ends at the verb.
+    const verbM = newJobM[1].match(/^(.+?)\s+(?:has|wants|needs|got|gets|tiene|quiere)\b\s*(.*)$/i);
+    if (verbM) {
+      const service = verbM[2].replace(/\bfor\b.*$/i, "").replace(/^(a|an|un|una)\s+/i, "").trim();
+      return {
+        intent: "log_quote", confidence: 0.6,
+        client_name: cleanName(verbM[1]),
+        amount: t, billing_period: t,
+        service_description: service || undefined,
+        ...extractSchedule(t),
+      };
+    }
+    return { ...parseQuote("quoted " + newJobM[1]), ...extractSchedule(t), intent: "log_quote", confidence: 0.6 };
   }
 
   // Status change (plain language) — must not collide with job verbs

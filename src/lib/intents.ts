@@ -1,5 +1,5 @@
 import { db } from "./supabase";
-import { matchClients, createClient, updateClient, listClients } from "./clients";
+import { matchClients, matchClientsScored, createClient, updateClient, listClients, STRONG_MATCH } from "./clients";
 import { createReminder, formatWhen, scheduleQuoteReminders, cancelQuoteReminders } from "./reminders";
 import { answerQuery, ParseContext } from "./anthropic";
 import { logLlm } from "./billing";
@@ -115,12 +115,19 @@ async function resolveClient(
   }
   if (!p.client_name && !p.address) return { client: null };
 
-  const matches = await matchClients(business.id, { name: p.client_name, address: p.address });
-  if (matches.length === 1) return { client: matches[0] };
+  const matches = await matchClientsScored(business.id, { name: p.client_name, address: p.address });
+  if (matches.length === 1) {
+    // Strong match (exact/substring) -> use it. Weak match (shared last name,
+    // typo bonus) -> CONFIRM: "Eric Shackelford" must never silently become
+    // "Elena Shackelford".
+    if (matches[0].score >= STRONG_MATCH || !p.client_name) return { client: matches[0].client };
+    session.pending = { kind: "confirm_match", action: p, candidateIds: [matches[0].client.id], expiresAt: pendingExpiry() };
+    return { client: null, ask: t.didYouMean(matches[0].client.name, p.client_name, lang) };
+  }
   if (matches.length > 1) {
     const shown = matches.slice(0, 4);
-    session.pending = { kind: "which_client", action: p, candidateIds: shown.map((c) => c.id), expiresAt: pendingExpiry() };
-    const opts_ = shown.map((c, i) => `(${i + 1}) ${c.name}${c.address ? ` — ${c.address}` : ""}`).join("  ");
+    session.pending = { kind: "which_client", action: p, candidateIds: shown.map((m) => m.client.id), expiresAt: pendingExpiry() };
+    const opts_ = shown.map((m, i) => `(${i + 1}) ${m.client.name}${m.client.address ? ` — ${m.client.address}` : ""}`).join("  ");
     return { client: null, ask: t.whichClient(opts_, lang) };
   }
   // No match.
@@ -155,6 +162,25 @@ export async function resolvePending(
     if (!chosen) return null; // unrelated text — fall through to a normal parse
     const action: ParsedAction = { ...pending.action, client_id: chosen };
     return runAction(business, action, ctx, null, session, lang, a);
+  }
+
+  if (pending.kind === "confirm_match") {
+    const candidateId = pending.candidateIds?.[0];
+    if (/^\s*(yes|yeah|yep|s[ií]|dale|ok)\s*[.!]?\s*$/i.test(a) && candidateId) {
+      const action: ParsedAction = { ...pending.action, client_id: candidateId };
+      return runAction(business, action, ctx, null, session, lang, a);
+    }
+    if (/^\s*(new|nuevo|no|nope)\s*[.!]?\s*$/i.test(a)) {
+      const p = pending.action;
+      const client = await createClient(business.id, {
+        name: p.client_name ?? "New client",
+        address: p.address,
+        status: p.intent === "log_quote" ? "quoted" : "active",
+      });
+      const action: ParsedAction = { ...p, client_id: client.id };
+      return runAction(business, action, ctx, null, session, lang, a);
+    }
+    return null; // unrelated text — parse normally
   }
 
   if (pending.kind === "confirm_create") {
@@ -213,14 +239,19 @@ async function logQuote(business: Business, p: ParsedAction, ctx: ParseContext, 
     const all = await listClients(business.id);
     client = all.find((c) => c.id === p.client_id) ?? null;
   } else {
-    const matches = await matchClients(business.id, { name: p.client_name, address: p.address });
+    const matches = await matchClientsScored(business.id, { name: p.client_name, address: p.address });
     if (matches.length > 1) {
       const shown = matches.slice(0, 4);
-      session.pending = { kind: "which_client", action: p, candidateIds: shown.map((c) => c.id), expiresAt: pendingExpiry() };
-      const opts = shown.map((c, i) => `(${i + 1}) ${c.name}${c.address ? ` — ${c.address}` : ""}`).join("  ");
+      session.pending = { kind: "which_client", action: p, candidateIds: shown.map((m) => m.client.id), expiresAt: pendingExpiry() };
+      const opts = shown.map((m, i) => `(${i + 1}) ${m.client.name}${m.client.address ? ` — ${m.client.address}` : ""}`).join("  ");
       return t.whichClient(opts, lang);
     }
-    client = matches[0] ?? null;
+    if (matches.length === 1 && matches[0].score < STRONG_MATCH && p.client_name) {
+      // Weak lookalike (e.g. same last name only): confirm before touching either record.
+      session.pending = { kind: "confirm_match", action: p, candidateIds: [matches[0].client.id], expiresAt: pendingExpiry() };
+      return t.didYouMean(matches[0].client.name, p.client_name, lang);
+    }
+    client = matches[0]?.client ?? null;
   }
 
   // Guard: a new price for an ACTIVE client is a price update, not a re-quote.

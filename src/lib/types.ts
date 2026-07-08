@@ -25,9 +25,9 @@ export interface BusinessSettings {
 
 /** Conversation memory: the pending question the next inbound text may answer. */
 export interface PendingState {
-  kind: "which_client" | "confirm_create" | "missing_amount";
+  kind: "which_client" | "confirm_create" | "missing_amount" | "confirm_match";
   action: ParsedAction; // the action to run once resolved
-  candidateIds?: string[]; // for which_client: the choices offered, in order
+  candidateIds?: string[]; // which_client choices in order / confirm_match's single candidate
   expiresAt: string; // ISO; stale questions are ignored
 }
 

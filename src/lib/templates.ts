@@ -193,4 +193,8 @@ export const t = {
       : "📸 Got your photo — to load a client list from a photo, use Import on your dashboard: fieldtext.vercel.app/dashboard/import",
   yesToAdd: (name: string, lang: Lang) =>
     lang === "es" ? `No encontré a "${name}". Responde SÍ para agregarlo, o manda el nombre correcto.` : `I don't know "${name}". Reply YES to add them, or send the right name.`,
+  didYouMean: (candidate: string, given: string, lang: Lang) =>
+    lang === "es"
+      ? `¿Te refieres a ${candidate}? Responde SÍ — o NUEVO para agregar "${given}" como cliente nuevo.`
+      : `Did you mean ${candidate}? Reply YES — or NEW to add "${given}" as a new client.`,
 };

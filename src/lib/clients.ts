@@ -23,28 +23,45 @@ export async function listClients(businessId: string): Promise<Client[]> {
   return (data ?? []) as Client[];
 }
 
+export interface ScoredMatch { client: Client; score: number }
+
 /**
- * Fuzzy-match a client by name and/or address. Returns candidates sorted by score
- * (best first). An empty result means "no match"; more than one means "ambiguous".
+ * A score at or above this means the name genuinely matched (exact/substring).
+ * Below it, the hit came only from a shared token or a typo bonus — e.g.
+ * "Eric Shackelford" hitting "Elena Shackelford" on the last name — and the
+ * caller should CONFIRM with the operator instead of silently attaching data.
  */
-export async function matchClients(
+export const STRONG_MATCH = 3;
+
+/**
+ * Fuzzy-match a client by name and/or address, with scores. Sorted best-first;
+ * only candidates close to the best are kept (a clear winner isn't drowned out).
+ */
+export async function matchClientsScored(
   businessId: string,
   opts: { name?: string; address?: string }
-): Promise<Client[]> {
+): Promise<ScoredMatch[]> {
   const all = await listClients(businessId);
   const qName = norm(opts.name);
   const qAddr = norm(opts.address);
   if (!qName && !qAddr) return [];
 
   const scored = all
-    .map((c) => ({ c, score: score(c, qName, qAddr) }))
+    .map((c) => ({ client: c, score: score(c, qName, qAddr) }))
     .filter((x) => x.score > 0)
     .sort((a, b) => b.score - a.score);
 
-  // Keep only matches close to the best (so a clear winner isn't drowned out).
   if (scored.length === 0) return [];
   const best = scored[0].score;
-  return scored.filter((x) => x.score >= best - 1).map((x) => x.c);
+  return scored.filter((x) => x.score >= best - 1);
+}
+
+/** Back-compat: just the clients. Empty = no match; >1 = ambiguous. */
+export async function matchClients(
+  businessId: string,
+  opts: { name?: string; address?: string }
+): Promise<Client[]> {
+  return (await matchClientsScored(businessId, opts)).map((x) => x.client);
 }
 
 /** Pure name+address match score (exported for tests). Higher = better match. */

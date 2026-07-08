@@ -323,3 +323,24 @@ test("fuzzy match tolerates typos (smtih ~ smith)", () => {
   assert.ok(matchScore({ name: "smtih" }, { name: "Smith", address: "12 Oak St" }) > 0);
   assert.equal(matchScore({ name: "garcia" }, { name: "Smith", address: null }), 0);
 });
+
+// ── Weak lookalikes must confirm, not attach ──────────────────────────────────
+import { STRONG_MATCH } from "../clients";
+
+test("same last name only = WEAK match (Eric vs Elena Shackelford)", () => {
+  const s = matchScore({ name: "eric shackelford" }, { name: "Elena Shackelford", address: null });
+  assert.ok(s > 0, "should be a candidate");
+  assert.ok(s < STRONG_MATCH, "but below the silent-attach threshold");
+});
+test("substring/exact names stay STRONG (no nagging on normal texts)", () => {
+  assert.ok(matchScore({ name: "smiths" }, { name: "The Smiths", address: null }) >= STRONG_MATCH);
+  assert.ok(matchScore({ name: "angela jones" }, { name: "Angela Jones", address: null }) >= STRONG_MATCH);
+});
+
+test("'new job <name> $1000 a week' = a new client engagement, not a work log", () => {
+  const a = one("New job Eric Shackelford has a tent for 1000 a week");
+  assert.equal(a[0].intent, "log_quote");
+  assert.equal(a[0].client_name, "Eric Shackelford");
+  assert.equal(a[0].amount, 1000);
+  assert.equal(a[0].billing_period, "weekly");
+});
