@@ -144,6 +144,23 @@ export default function RoadmapPage() {
         </Link>
       </header>
 
+      {/* Applied status */}
+      <section className="rounded-2xl border border-green-300 bg-green-50 p-5 shadow-sm">
+        <div className="flex items-center gap-2">
+          <CheckCircle2 className="h-5 w-5 text-brand" />
+          <h2 className="font-bold text-gray-900">Applied — July 7, 2026</h2>
+        </div>
+        <p className="mt-2 text-sm leading-6 text-gray-700">
+          Everything code-shaped on this page has been built and shipped: receivables (auto “who owes me”),
+          conversation memory, rainout reschedule, pause/skip/move, expenses + tax CSV export, invoice
+          forward-links, photo-text handling, crew day sheet + weekly/monthly digests, referral line, real
+          signup saving, homepage pricing + demo widget, and the full dashboard/PWA polish pass.
+          <strong> Still yours to do (not code):</strong> run migration <code>0006_roadmap.sql</code> in Supabase,
+          set up the free cron pinger, verify eric@fieldtextapp.com receives mail, kill the Squarespace parking
+          page, consolidate domains, and (deliberately skipped) voice notes + the demo video.
+        </p>
+      </section>
+
       {/* Verdict */}
       <section className="rounded-2xl border border-brand/25 bg-white p-5 shadow-sm">
         <div className="flex items-center gap-2">

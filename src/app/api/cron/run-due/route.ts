@@ -6,8 +6,10 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * Sends due reminders + auto follow-up nudges (+ optional digest). Triggered by
- * Vercel Cron every 5 minutes (vercel.json). Vercel auto-sends
+ * Generates billing-cycle charges, sends due reminders + follow-up nudges +
+ * day sheet / weekly / monthly digests. Triggered by Vercel Cron daily on Hobby
+ * (vercel.json) — pair with an external 10–15 min pinger (LAUNCH.md) for
+ * on-time reminders. Vercel auto-sends
  * `Authorization: Bearer <CRON_SECRET>`. Manual run:
  *   curl -X POST http://localhost:3000/api/cron/run-due -H "x-cron-secret: $CRON_SECRET"
  */

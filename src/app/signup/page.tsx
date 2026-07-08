@@ -1,20 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
+import { useFormState, useFormStatus } from "react-dom";
+import { submitSignup, type SignupResult } from "./actions";
 
-// Public consent / signup page. Used as opt-in proof for Twilio Toll-Free / A2P
+// Public consent / signup page. Used as opt-in proof for Twilio A2P
 // verification, and as the real front door for onboarding operators.
+// The form SAVES: signups table + proof-of-consent + founder SMS alert.
 export default function SignupPage() {
-  const [done, setDone] = useState(false);
+  const [state, formAction] = useFormState<SignupResult | null, FormData>(submitSignup, null);
 
-  if (done) {
+  if (state?.ok) {
     return (
       <main className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center px-6 text-center">
         <div className="rounded-2xl border border-gray-100 bg-white p-8 shadow-sm">
           <div className="mb-3 text-4xl">🌱</div>
           <h1 className="mb-2 text-2xl font-bold">You&apos;re set!</h1>
           <p className="text-gray-600">
-            We&apos;ll text you from FieldText to get started. Reply <span className="font-semibold">STOP</span> anytime to opt out.
+            We&apos;ll text you from FieldText to get started — usually within the hour. Reply{" "}
+            <span className="font-semibold">STOP</span> anytime to opt out.
           </p>
         </div>
       </main>
@@ -32,19 +36,13 @@ export default function SignupPage() {
           FieldText understands it, saves it, and texts you back. Sign up to start.
         </p>
 
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            setDone(true);
-          }}
-          className="mt-6 space-y-4"
-        >
+        <form action={formAction} className="mt-6 space-y-4">
           <Field label="Your name" name="name" type="text" required />
           <Field label="Business name" name="business" type="text" required />
           <Field label="Mobile number" name="phone" type="tel" required placeholder="(555) 123-4567" />
 
           <label className="flex items-start gap-2 text-sm text-gray-600">
-            <input type="checkbox" required className="mt-1 h-4 w-4 rounded border-gray-300 text-brand focus:ring-brand" />
+            <input name="consent" type="checkbox" required className="mt-1 h-4 w-4 rounded border-gray-300 text-brand focus:ring-brand" />
             <span>
               I agree to receive recurring text messages from <span className="font-medium">FieldText</span> — quote and job
               reminders, follow-up nudges, confirmations, and account notifications — at the mobile number I provided.
@@ -53,20 +51,33 @@ export default function SignupPage() {
             </span>
           </label>
 
-          <button
-            type="submit"
-            className="w-full rounded-lg bg-brand px-4 py-2.5 font-medium text-white hover:bg-brand-dark"
-          >
-            Sign up &amp; get started by text
-          </button>
+          {state?.error && (
+            <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">{state.error}</p>
+          )}
+
+          <SubmitButton />
         </form>
 
         <p className="mt-4 text-center text-xs text-gray-400">
-          By signing up you agree to our terms and to receive SMS as described above. We never share your number with
-          third parties for marketing. Reply STOP to cancel, HELP for help.
+          By signing up you agree to our <Link href="/terms" className="underline hover:text-gray-600">terms</Link> and{" "}
+          <Link href="/privacy" className="underline hover:text-gray-600">privacy policy</Link>, and to receive SMS as
+          described above. We never share your number with third parties for marketing. Reply STOP to cancel, HELP for help.
         </p>
       </div>
     </main>
+  );
+}
+
+function SubmitButton() {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      className="min-h-[44px] w-full rounded-lg bg-brand px-4 py-2.5 font-medium text-white hover:bg-brand-dark disabled:opacity-60"
+    >
+      {pending ? "Signing you up…" : "Sign up & get started by text"}
+    </button>
   );
 }
 

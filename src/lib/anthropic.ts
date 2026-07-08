@@ -27,7 +27,9 @@ export interface QueryResult { text: string; usage: LlmUsage | null }
 
 let _anthropic: Anthropic | null = null;
 function anthropic() {
-  if (!_anthropic) _anthropic = new Anthropic({ apiKey: config.anthropic.apiKey() });
+  // Twilio abandons webhooks at ~15s: keep the parse call well inside that window
+  // (8s hard timeout, no SDK retries — a missed parse beats a double-processed one).
+  if (!_anthropic) _anthropic = new Anthropic({ apiKey: config.anthropic.apiKey(), timeout: 8000, maxRetries: 0 });
   return _anthropic;
 }
 
@@ -43,7 +45,11 @@ function detectLanguageSwitch(text: string): Lang | null {
 const ACTION_PROPS = {
   intent: {
     type: "string",
-    enum: ["log_quote", "update_status", "log_job", "log_payment", "set_reminder", "correction", "query", "help"],
+    enum: [
+      "log_quote", "update_status", "log_job", "log_payment", "set_reminder", "correction", "query", "help",
+      "log_expense", "update_client_info", "pause_client", "resume_client",
+      "skip_visit", "reschedule_visit", "bulk_reschedule", "price_change", "request_invoice",
+    ],
   },
   confidence: { type: "number", description: "0-1 confidence." },
   client_name: { type: "string" },
@@ -62,6 +68,17 @@ const ACTION_PROPS = {
   due_at: { type: "string", description: "Full ISO 8601 with offset." },
   query_text: { type: "string" },
   correction_text: { type: "string", description: "What to fix on the last record." },
+  // roadmap entities
+  note_text: { type: "string", description: "update_client_info: gate codes / free-form client notes." },
+  phone: { type: "string", description: "update_client_info: client's phone." },
+  email: { type: "string", description: "update_client_info: client's email." },
+  referred_by: { type: "string", description: "update_client_info: who referred this client." },
+  expense_category: { type: "string", enum: ["materials", "fuel", "equipment", "labor", "other"], description: "log_expense category." },
+  target_date: { type: "string", description: "YYYY-MM-DD for reschedule_visit / bulk_reschedule." },
+  pause_until: { type: "string", description: "YYYY-MM-DD resume date for pause_client, if given." },
+  invoice_kind: { type: "string", enum: ["invoice", "receipt"], description: "request_invoice." },
+  payment_method: { type: "string", enum: ["cash", "check", "venmo", "zelle", "other"], description: "log_payment: how they paid, if mentioned." },
+  scheduled_on: { type: "string", description: "YYYY-MM-DD when a job is booked for a FUTURE date ('mulch next tuesday')." },
 };
 const RECORD_TOOL = {
   name: "record_actions",
@@ -100,7 +117,21 @@ function systemPrompt(ctx: ParseContext): string {
     `- recurring service schedule: "every other tuesday"/"weekly on mondays"/"cada dos semanas los martes" -> service_interval (weekly|biweekly|monthly) + service_day. This is the SERVICE cadence, separate from billing_period.`,
     `- payments: "collected/paid/cobré" -> log_payment payment_status=paid; "owes"/"hasn't paid"/"debe" -> payment_status=unpaid; "overdue/atrasado" -> overdue.`,
     ``,
-    `Intents: log_quote, update_status, log_job, log_payment, set_reminder, query (questions like "who do I follow up with?"/"¿a quién doy seguimiento?", "what's my MRR?"), correction (the operator is fixing the last record, e.g. "no it's 333 not 233", "change angela to weekly"), help.`,
+    `Intents: log_quote, update_status, log_job, log_payment, set_reminder, query (questions like "who do I follow up with?"/"who owes me?"/"what's my monday route?"), correction (fixing the last record, e.g. "no it's 333 not 233"), help,`,
+    `log_expense ("spent 84 on mulch at home depot" -> amount + expense_category + description — money OUT, never log_payment),`,
+    `update_client_info ("angela's number is 555-0142" -> phone; "gate code 4412 at the smiths" -> note_text; "jones referred by bob" -> referred_by),`,
+    `pause_client ("hold jones til spring", "pause the smiths" -> pause_until if a date is given) / resume_client,`,
+    `skip_visit ("skip the smiths this week" — one visit only, NOT a schedule change),`,
+    `reschedule_visit ("move garcia to friday" -> target_date — one visit only, do NOT change service_day),`,
+    `bulk_reschedule ("rained out, push today to tomorrow"/"llovió, muévelo a mañana" -> target_date — every stop due today moves),`,
+    `price_change ("smiths are now 350" on an EXISTING client -> amount. NEVER log_quote for an existing active client's new price — that would wrongly restart their quote),`,
+    `request_invoice ("invoice bob" -> invoice_kind=invoice; "receipt bob" -> receipt).`,
+    ``,
+    `CRITICAL guardrails:`,
+    `- "finished/done/wrapped up" + work words ("finished mowing at the smiths") = log_job, NOT update_status completed. Only mark completed/lost when the RELATIONSHIP ends ("we're done with the smiths for good", "lost the jones account").`,
+    `- One-off future work with a price ("mulch at the smiths next tuesday $450") = log_job with scheduled_on + amount.`,
+    `- If they paid by a method ("bob venmoed 300", "paid cash") set payment_method.`,
+    `- Requests you have no intent for (delete a record, edit an old job): set needs_clarification saying what to do instead — never force the nearest intent.`,
     `If a required field is missing or a client is ambiguous, set needs_clarification with ONE short question instead of guessing. If confidence is low, ask rather than write.`,
   ].join("\n");
 }
@@ -198,9 +229,57 @@ function parseClause(text: string, _ctx: ParseContext): Record<string, any> | nu
   if (!t) return null;
 
   // Correction
-  if (/^(no[, ]|actually\b|change\b|it'?s .* not |no es|corrige|cambia\b|en realidad)/i.test(lower)) {
+  if (/^(no[, ]|actually\b|change\b|it'?s .* not |no es|corrige|cambia\b|en realidad|fix\b)/i.test(lower)) {
     return { intent: "correction", confidence: 0.6, correction_text: t };
   }
+
+  // Rainout / bulk reschedule ("rained out, push today to friday")
+  if (/\b(rained? out|rain(ed)?\b.*\b(out|day)|llovi[oó]|lluvia|push (today|everything))\b/i.test(lower)) {
+    // Only the destination resolves ("...to friday") — never the word "today" itself.
+    const toM = t.match(/\b(?:to|a|al|hasta|para)\s+([a-zà-ÿ0-9 ]+)$/i);
+    return { intent: "bulk_reschedule", confidence: 0.6, target_date: toM?.[1] ?? "tomorrow" };
+  }
+
+  // Pause / resume ("hold jones til spring", "pause the smiths until april", "resume jones")
+  const pauseM = t.match(/\b(?:pause|hold|pausa(?:r)?)\s+(?:the |los |las |el |la |a )?([a-zà-ÿ][a-zà-ÿ .'’-]+?)(?:\s+(?:until|til|till|hasta)\s+(.+))?$/i);
+  if (pauseM) return { intent: "pause_client", confidence: 0.6, client_name: cleanName(pauseM[1]), pause_until: pauseM[2] };
+  const resumeM = t.match(/\b(?:resume|unpause|restart|reactiva(?:r)?)\s+(?:the |los |las |el |la |a )?([a-zà-ÿ][a-zà-ÿ .'’-]+)/i);
+  if (resumeM) return { intent: "resume_client", confidence: 0.6, client_name: cleanName(resumeM[1]) };
+
+  // Skip one visit ("skip the smiths this week")
+  const skipM = t.match(/\b(?:skip|salta(?:r)?)\s+(?:the |los |las |el |la |a )?([a-zà-ÿ][a-zà-ÿ .'’-]+?)(?:\s+(?:this week|esta semana|today|hoy))?$/i);
+  if (skipM) return { intent: "skip_visit", confidence: 0.6, client_name: cleanName(skipM[1]) };
+
+  // Move one visit ("move garcia to friday")
+  const moveM = t.match(/\b(?:move|mueve|cambia)\s+(?:the |los |las |el |la |a )?([a-zà-ÿ][a-zà-ÿ .'’-]+?)\s+(?:to|a|al|para el?)\s+(.+)$/i);
+  if (moveM && normalizeWeekday(moveM[2])) {
+    return { intent: "reschedule_visit", confidence: 0.6, client_name: cleanName(moveM[1]), target_date: moveM[2] };
+  }
+
+  // Expense — money OUT ("spent 84 on mulch at home depot")
+  if (/\b(spent|gast[eé]|bought|compr[eé])\b/i.test(lower)) {
+    const desc = t.replace(/^.*?\b(?:spent|gast[eé]|bought|compr[eé])\b\s*/i, "").replace(/^\$?[\d.,]+\s*(?:on|en|de)?\s*/i, "");
+    return { intent: "log_expense", confidence: 0.6, amount: t, expense_category: t, note_text: desc };
+  }
+
+  // Client info ("angela's number is 555-0142", "gate code 4412 at the smiths", "jones referred by bob")
+  const phoneM = t.match(/^(?:the |los |las |el |la )?([a-zà-ÿ][a-zà-ÿ .'’-]+?)(?:'s)?\s+(?:number|phone|cell|tel[eé]fono)\s+(?:is|es)?\s*([+()\d][\d\s().-]{6,})/i);
+  if (phoneM) return { intent: "update_client_info", confidence: 0.65, client_name: cleanName(phoneM[1]), phone: phoneM[2].trim() };
+  const gateM = t.match(/\b(gate code|door code|c[oó]digo)\b.*?\b(?:at|for|de)\s+(?:the |los |las |el |la )?([a-zà-ÿ][a-zà-ÿ .'’-]+)/i);
+  if (gateM) return { intent: "update_client_info", confidence: 0.6, client_name: cleanName(gateM[2]), note_text: t };
+  const refM = t.match(/^(?:the |los |las |el |la )?([a-zà-ÿ][a-zà-ÿ .'’-]+?)\s+(?:referred by|was referred by|refirid[oa] por|la refiri[oó])\s+(.+)$/i);
+  if (refM) return { intent: "update_client_info", confidence: 0.6, client_name: cleanName(refM[1]), referred_by: cleanName(refM[2]) };
+
+  // Invoice / receipt ("invoice bob", "receipt for the smiths")
+  const invM = t.match(/^(invoice|receipt|factura|recibo)\s+(?:for |para |de )?(?:the |los |las |el |la )?([a-zà-ÿ][a-zà-ÿ .'’-]+)$/i);
+  if (invM) {
+    const kind = /receipt|recibo/i.test(invM[1]) ? "receipt" : "invoice";
+    return { intent: "request_invoice", confidence: 0.65, invoice_kind: kind, client_name: cleanName(invM[2]) };
+  }
+
+  // Price change ("smiths are now 350", "smiths now 350/mo")
+  const priceChangeM = t.match(/^(?:the |los |las |el |la )?([a-zà-ÿ][a-zà-ÿ .'’-]+?)\s+(?:is|are|es|son)?\s*(?:now|ahora)\s+\$?([\d.,]+)/i);
+  if (priceChangeM) return { intent: "price_change", confidence: 0.6, client_name: cleanName(priceChangeM[1]), amount: priceChangeM[2], billing_period: t };
 
   // Question -> query (unless it's a reminder)
   if (isQuestion(t) && !/\b(remind me|recu[eé]rda)/i.test(lower)) {
@@ -217,10 +296,10 @@ function parseClause(text: string, _ctx: ParseContext): Record<string, any> | nu
   }
 
   // Payment (incl. owes / unpaid)
-  if (/\b(collected|got paid|paid|payment|received|owe|owes|unpaid|overdue|cobr[eé]|recib[ií]|me pag|pag[oó]|deben?|atrasad)\b/i.test(lower)) {
+  if (/\b(collected|got paid|paid|payment|received|venmo(ed|'d)?|zelled?|owe|owes|unpaid|overdue|cobr[eé]|recib[ií]|me pag|pag[oó]|deben?|atrasad)\b/i.test(lower)) {
     const fromM = t.match(/\b(?:from|a|de)\s+(?:los |las |el |la )?([a-zà-ÿ][a-zà-ÿ .'’-]+)/i);
     const owesM = t.match(/^([a-zà-ÿ][a-zà-ÿ .'’-]+?)\s+(?:owes?|still owes|deben?|no ha pagado|hasn'?t paid)/i);
-    return { intent: "log_payment", confidence: 0.6, amount: t, client_name: cleanName(fromM?.[1] ?? owesM?.[1]), paid_on: t, payment_status: t };
+    return { intent: "log_payment", confidence: 0.6, amount: t, client_name: cleanName(fromM?.[1] ?? owesM?.[1]), paid_on: t, payment_status: t, payment_method: t };
   }
 
   // Quote
@@ -230,7 +309,7 @@ function parseClause(text: string, _ctx: ParseContext): Record<string, any> | nu
 
   // Status change (plain language) — must not collide with job verbs
   const looksJob = /\b(mowed|mow|cleanup|clean up|trim|cut|aerat|fertiliz|edg|blew|blow|plant|mulch|did|cort[eé]|pod[eé]|limpi[eé]|hice)\b/i.test(lower);
-  if (!looksJob && /\b(accepted|said yes|are in|is in|signed|declined|said no|lost|cancel|dijo que s[ií]|empieza|perdimos|perd[ií]|rechaz|acept)/i.test(lower)) {
+  if (!looksJob && /\b(accepted|said yes|are in|is in|signed|declined|said no|lost|dijo que s[ií]|empieza|perdimos|perd[ií]|rechaz|acept)/i.test(lower)) {
     const nameM = t.match(/^(?:mark\s+|lost the\s+|perdimos (?:el|la|a)\s+)?([a-zà-ÿ][a-zà-ÿ .'’-]+?)\b/i);
     return { intent: "update_status", confidence: 0.55, status: t, client_name: cleanName(nameM?.[1]), ...extractSchedule(t) };
   }
@@ -256,9 +335,16 @@ function parseQuote(text: string): Record<string, any> {
   // Strip the quote keyword and a leading ES preposition ("a", "a los").
   let s = text.replace(/^.*?(quoted|quote|coti[a-zà-ÿ]*)\s*/i, "").replace(/^(a los|a las|a la|a el|al|a|to)\s+/i, "");
 
-  // Find the price: a number tied to a period word ("500 a month", "$500/mo", "$500 al mes").
+  // Find the price: a number tied to a period word ("500 a month", "$500/mo", "$500 al mes"),
+  // or — for one-time quotes — a $-prefixed amount with no period ("$350 for cleanup").
   const priceRe = /(\$?\s*[0-9][0-9,]*(?:\.[0-9]+)?)\s*(?:a |per |al |por |\/)?\s*(months?|weeks?|mo|wk|mes(?:es)?|semanas?|sem)\b/i;
-  const price = s.match(priceRe);
+  const oneTimeRe = /(\$\s*[0-9][0-9,]*(?:\.[0-9]+)?)/;
+  let price = s.match(priceRe);
+  let oneTime = false;
+  if (!price) {
+    price = s.match(oneTimeRe);
+    oneTime = !!price;
+  }
   const amount = price ? price[1] : undefined;
 
   let name: string | undefined, address: string | undefined, service: string | undefined;
@@ -282,7 +368,13 @@ function parseQuote(text: string): Record<string, any> {
   } else {
     name = s;
   }
-  return { client_name: cleanName(name), address: address || undefined, amount, billing_period: text, service_description: service || undefined };
+  return {
+    client_name: cleanName(name),
+    address: address || undefined,
+    amount,
+    billing_period: oneTime ? "one_time" : text,
+    service_description: service || undefined,
+  };
 }
 
 function cleanName(s?: string): string | undefined {

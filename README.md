@@ -32,7 +32,7 @@ by adding a `businesses` row + its `authorized_phones`, no code change.
 - **Supabase (Postgres)** with **Row-Level Security** on — data + SQL migrations
 - **Twilio Programmable Messaging** — one designated business number, inbound webhook
 - **Anthropic Claude** — `parseMessage()` via **tool-calling / structured output**, model swappable by env
-- **Vercel Cron** — `/api/cron/run-due` every 5 minutes for reminders + nudges
+- **Cron** — `/api/cron/run-due` for charges, reminders, nudges + digests (daily on Vercel Hobby; add an external 10–15 min pinger per LAUNCH.md)
 - **Tailwind** — mobile-friendly owner dashboard
 
 ---

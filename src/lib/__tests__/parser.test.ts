@@ -223,6 +223,101 @@ test("CSV import with headers", () => {
   assert.equal(ds[0].amount, 300);
 });
 
+// ── Roadmap intents (heuristic path) ──────────────────────────────────────────
+import { nextCycleDate } from "../charges";
+import { normalizeExpenseCategory, normalizePaymentMethod } from "../normalize";
+
+test("rainout -> bulk_reschedule", () => {
+  const a = one("rained out, push today to friday");
+  assert.equal(a[0].intent, "bulk_reschedule");
+  assert.ok(a[0].target_date); // resolved to a YMD
+  assert.equal(new Date(a[0].target_date + "T12:00:00Z").getUTCDay(), 5);
+});
+
+test("pause / resume", () => {
+  const p = one("pause the smiths until friday");
+  assert.equal(p[0].intent, "pause_client");
+  assert.equal(p[0].client_name, "Smiths");
+  assert.ok(p[0].pause_until);
+  const r = one("resume the smiths");
+  assert.equal(r[0].intent, "resume_client");
+});
+
+test("skip and move a visit", () => {
+  const s = one("skip the garcias this week");
+  assert.equal(s[0].intent, "skip_visit");
+  assert.equal(s[0].client_name, "Garcias");
+  const m = one("move garcia to friday");
+  assert.equal(m[0].intent, "reschedule_visit");
+  assert.equal(new Date(m[0].target_date + "T12:00:00Z").getUTCDay(), 5);
+});
+
+test("expense with category", () => {
+  const a = one("spent 84 on mulch at home depot");
+  assert.equal(a[0].intent, "log_expense");
+  assert.equal(a[0].amount, 84);
+  assert.equal(a[0].expense_category, "materials");
+});
+
+test("client info: phone + referral", () => {
+  const ph = one("angela's number is 555-014-2233");
+  assert.equal(ph[0].intent, "update_client_info");
+  assert.equal(ph[0].client_name, "Angela");
+  assert.ok(ph[0].phone?.includes("555"));
+  const ref = one("angela referred by bob");
+  assert.equal(ref[0].intent, "update_client_info");
+  assert.equal(ref[0].referred_by, "Bob");
+});
+
+test("invoice / receipt request", () => {
+  const inv = one("invoice bob");
+  assert.equal(inv[0].intent, "request_invoice");
+  assert.equal(inv[0].invoice_kind, "invoice");
+  assert.equal(inv[0].client_name, "Bob");
+  const rec = one("receipt for the smiths");
+  assert.equal(rec[0].invoice_kind, "receipt");
+});
+
+test("price change does not become a quote", () => {
+  const a = one("the smiths are now 350");
+  assert.equal(a[0].intent, "price_change");
+  assert.equal(a[0].client_name, "Smiths");
+  assert.equal(a[0].amount, 350);
+});
+
+test("one-time quote with $ but no period keeps the amount", () => {
+  const a = one("quoted jane at 5 oak st for $350 cleanup");
+  assert.equal(a[0].intent, "log_quote");
+  assert.equal(a[0].client_name, "Jane");
+  assert.equal(a[0].amount, 350);
+  assert.equal(a[0].billing_period, "one_time");
+});
+
+test("payment method captured", () => {
+  const a = one("bob venmoed 300");
+  assert.equal(a[0].intent, "log_payment");
+  assert.equal(a[0].payment_method, "venmo");
+});
+
+test("'cancel the smiths' no longer maps to lost", () => {
+  const a = one("cancel the smiths");
+  assert.notEqual(a[0].intent, "update_status");
+});
+
+test("billing cycle date math", () => {
+  assert.equal(nextCycleDate("2026-07-01", "weekly"), "2026-07-08");
+  assert.equal(nextCycleDate("2026-07-01", "biweekly"), "2026-07-15");
+  assert.equal(nextCycleDate("2026-07-15", "monthly"), "2026-08-15");
+  assert.equal(nextCycleDate("2026-01-31", "monthly"), "2026-02-28"); // clamped
+});
+
+test("category + method normalizers", () => {
+  assert.equal(normalizeExpenseCategory("gas for the truck"), "fuel");
+  assert.equal(normalizeExpenseCategory("new trimmer blade"), "equipment");
+  assert.equal(normalizePaymentMethod("paid cash"), "cash");
+  assert.equal(normalizePaymentMethod("zelled me"), "zelle");
+});
+
 // ── Typo'd existing-client fuzzy match ────────────────────────────────────────
 test("fuzzy match tolerates typos (smtih ~ smith)", () => {
   assert.ok(matchScore({ name: "smtih" }, { name: "Smith", address: "12 Oak St" }) > 0);

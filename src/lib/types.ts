@@ -1,4 +1,4 @@
-export type ClientStatus = "quoted" | "active" | "completed" | "lost";
+export type ClientStatus = "quoted" | "active" | "completed" | "lost" | "paused";
 export type MessageDirection = "inbound" | "outbound";
 export type ReminderStatus = "pending" | "sent" | "done" | "cancelled";
 // Canonical billing periods (stored in clients.billing_period). Always normalized.
@@ -15,6 +15,20 @@ export interface BusinessSettings {
   billing_enabled?: boolean; // log usage/cost (default true; turn off to disable)
   quote_reminder_days?: number[]; // auto quote-follow-up cadence, default [2,5,7,14]
   language?: Lang; // operator's language for UI + outbound texts (default en)
+  payment_note?: string; // shown on invoices, e.g. "Venmo @shacks-landing · Zelle 971-..."
+  weekly_digest_enabled?: boolean; // Monday money digest (default ON)
+  last_weekly_digest_date?: string; // YYYY-MM-DD guard
+  last_monthly_summary?: string; // YYYY-MM guard
+  last_season_nudge?: string; // YYYY-MM guard (Feb/Sep booking nudges)
+  referral_code?: string; // keyword for "text CODE to join" referral line
+}
+
+/** Conversation memory: the pending question the next inbound text may answer. */
+export interface PendingState {
+  kind: "which_client" | "confirm_create" | "missing_amount";
+  action: ParsedAction; // the action to run once resolved
+  candidateIds?: string[]; // for which_client: the choices offered, in order
+  expiresAt: string; // ISO; stale questions are ignored
 }
 
 export type ReminderKind = "manual" | "quote_followup";
@@ -55,6 +69,8 @@ export interface AuthorizedPhone {
   label: string | null;
   is_primary: boolean;
   opted_out: boolean;
+  language: Lang | null; // per-phone override (ES crew, EN owner)
+  pending_state: PendingState | null; // conversation memory
   created_at: string;
 }
 
@@ -73,6 +89,11 @@ export interface Client {
   service_interval: string | null; // weekly | biweekly | monthly
   service_day: string | null; // lowercase english day, e.g. "tuesday"
   next_service_on: string | null; // YYYY-MM-DD
+  // contact + referral + seasonal pause
+  phone: string | null;
+  email: string | null;
+  referred_by: string | null;
+  paused_until: string | null; // YYYY-MM-DD
   created_at: string;
   updated_at: string;
 }
@@ -83,6 +104,9 @@ export interface Job {
   client_id: string | null;
   description: string;
   performed_on: string | null;
+  scheduled_on: string | null; // YYYY-MM-DD for future one-offs
+  amount: number | null; // one-off job price -> becomes a charge when done
+  status: "scheduled" | "done";
   created_at: string;
 }
 
@@ -93,7 +117,54 @@ export interface Payment {
   amount: number;
   paid_on: string | null;
   status: PaymentStatus;
+  method: string | null; // cash | check | venmo | zelle | other
   created_at: string;
+}
+
+export type ChargeStatus = "open" | "partial" | "paid" | "void";
+export type ChargeKind = "cycle" | "manual" | "job";
+
+/** A receivable: money the operator is OWED (auto per billing cycle, "owes", or a priced job). */
+export interface Charge {
+  id: string;
+  business_id: string;
+  client_id: string | null;
+  amount: number;
+  paid_amount: number;
+  status: ChargeStatus;
+  due_on: string; // YYYY-MM-DD
+  description: string | null;
+  kind: ChargeKind;
+  created_at: string;
+}
+
+export interface Expense {
+  id: string;
+  business_id: string;
+  amount: number;
+  category: string | null;
+  description: string | null;
+  spent_on: string; // YYYY-MM-DD
+  created_at: string;
+}
+
+export interface InvoiceRecord {
+  id: string; // uuid == unguessable share token
+  business_id: string;
+  client_id: string;
+  kind: "invoice" | "receipt";
+  payload: InvoicePayload;
+  created_at: string;
+}
+export interface InvoicePayload {
+  business_name: string;
+  client_name: string;
+  client_address: string | null;
+  lines: { description: string; amount: number; due_on?: string }[];
+  total: number;
+  payment_note: string | null;
+  lang: Lang;
+  date: string; // YYYY-MM-DD
 }
 
 export interface Reminder {
@@ -130,7 +201,17 @@ export type Intent =
   | "set_reminder"
   | "correction"
   | "query"
-  | "help";
+  | "help"
+  // roadmap intents
+  | "log_expense" // "spent 84 on mulch"
+  | "update_client_info" // phone/email/referred-by/gate-code notes
+  | "pause_client" // "hold jones til spring"
+  | "resume_client"
+  | "skip_visit" // "skip the smiths this week"
+  | "reschedule_visit" // "move garcia to friday"
+  | "bulk_reschedule" // "rained out, push today to tomorrow"
+  | "price_change" // "smiths are now 350"
+  | "request_invoice"; // "invoice bob" / "receipt bob"
 
 /** One action extracted from a message. A single text can produce several. */
 export interface ParsedAction {
@@ -156,6 +237,18 @@ export interface ParsedAction {
   query_text?: string;
   // free-text correction content (intent === "correction")
   correction_text?: string;
+  // roadmap entities
+  client_id?: string; // resolved by conversation memory — handlers use it directly
+  note_text?: string; // update_client_info: gate codes, misc notes
+  phone?: string; // update_client_info
+  email?: string; // update_client_info
+  referred_by?: string; // update_client_info
+  expense_category?: string; // log_expense: mulch|fuel|equipment|labor|other
+  target_date?: string; // YYYY-MM-DD for reschedule_visit / bulk_reschedule
+  pause_until?: string; // YYYY-MM-DD for pause_client (optional)
+  invoice_kind?: "invoice" | "receipt"; // request_invoice
+  payment_method?: string; // log_payment: cash|check|venmo|zelle|other
+  scheduled_on?: string; // YYYY-MM-DD: a FUTURE one-off job ("mulch next tuesday $450")
 }
 
 /** A draft client produced by import (text / CSV / photo), reviewed before saving. */

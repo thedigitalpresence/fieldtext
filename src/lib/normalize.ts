@@ -21,6 +21,15 @@ export interface NormalizeContext {
 }
 
 // ── Names ─────────────────────────────────────────────────────────────────────
+/** Today's date (YYYY-MM-DD) in a business's timezone — never the server's. */
+export function todayInTz(tz: string, now: Date = new Date()): string {
+  try {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(now);
+  } catch {
+    return now.toISOString().slice(0, 10);
+  }
+}
+
 export function titleCase(s: string): string {
   return s
     .trim()
@@ -112,7 +121,7 @@ export function normalizePeriod(input?: string | null): BillingPeriod | undefine
   if (/(every other week|every 2 weeks|bi[-\s]?weekly|bi[-\s]?wk|2x\s*\/?\s*mo|2x a month|twice a month|cada dos semanas|cada 2 semanas|quincenal|bisemanal)/.test(t)) return "biweekly";
   if (/(weekly|\/wk|\bwk\b|a week|per week|every week|por semana|semanal|a la semana|cada semana)/.test(t)) return "weekly";
   if (/(monthly|\/mo\b|\bmo\b|a month|per month|every month|al mes|por mes|mensual|cada mes|\bmonth\b|\bmes\b)/.test(t)) return "monthly";
-  if (/(one[-\s]?time|one[-\s]?off|\bonce\b|single|una vez|un[ií]co|por [uú]nica vez)/.test(t)) return "one_time";
+  if (/(one[_\-\s]?time|one[-\s]?off|\bonce\b|single|una vez|un[ií]co|por [uú]nica vez)/.test(t)) return "one_time";
   return undefined;
 }
 
@@ -275,6 +284,19 @@ export function normalizeAction(raw: Record<string, any>, ctx: NormalizeContext)
   if (raw.reminder_text) a.reminder_text = String(raw.reminder_text).trim().replace(/\s+/g, " ");
   if (raw.correction_text) a.correction_text = String(raw.correction_text).trim();
 
+  // Roadmap entities.
+  if (raw.client_id) a.client_id = String(raw.client_id);
+  if (raw.note_text) a.note_text = String(raw.note_text).trim();
+  if (raw.phone) a.phone = String(raw.phone).trim();
+  if (raw.email) a.email = String(raw.email).trim().toLowerCase();
+  if (raw.referred_by) a.referred_by = normalizeName(String(raw.referred_by));
+  if (raw.expense_category) a.expense_category = normalizeExpenseCategory(String(raw.expense_category));
+  if (raw.invoice_kind) a.invoice_kind = /receipt|recibo/i.test(String(raw.invoice_kind)) ? "receipt" : "invoice";
+  if (raw.payment_method) a.payment_method = normalizePaymentMethod(String(raw.payment_method));
+  a.target_date = normalizeDay(raw.target_date, ctx);
+  a.pause_until = normalizeDay(raw.pause_until, ctx);
+  a.scheduled_on = normalizeDay(raw.scheduled_on, ctx);
+
   // Dates: accept ISO/ymd as-is, otherwise resolve the phrase.
   a.performed_on = normalizeDay(raw.performed_on, ctx);
   a.paid_on = normalizeDay(raw.paid_on, ctx);
@@ -302,6 +324,28 @@ export function levenshtein(a: string, b: string): number {
     }
   }
   return dp[n];
+}
+
+/** Expense category from a phrase ("mulch at home depot" -> materials). */
+export function normalizeExpenseCategory(s: string): string {
+  const t = s.toLowerCase();
+  if (/(mulch|soil|seed|sod|plant|fertiliz|material|stone|gravel|pavers?)/.test(t)) return "materials";
+  if (/(gas|fuel|diesel|gasolina)/.test(t)) return "fuel";
+  if (/(mower|blower|trimmer|blade|equip|tool|repair|herramienta)/.test(t)) return "equipment";
+  if (/(paid .*(crew|miguel|helper)|labor|wages|jornal)/.test(t)) return "labor";
+  if (/^(materials|fuel|equipment|labor|other)$/.test(t)) return t;
+  return "other";
+}
+
+/** Payment method from a phrase ("venmoed", "paid cash"). */
+export function normalizePaymentMethod(s: string): string | undefined {
+  const t = s.toLowerCase();
+  if (/venmo/.test(t)) return "venmo";
+  if (/zelle/.test(t)) return "zelle";
+  if (/cash|efectivo/.test(t)) return "cash";
+  if (/check|cheque/.test(t)) return "check";
+  if (/^(venmo|zelle|cash|check|other)$/.test(t)) return t;
+  return undefined;
 }
 
 function normalizeDay(v: any, ctx: NormalizeContext): string | undefined {

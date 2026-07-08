@@ -1,11 +1,19 @@
 import { db } from "./supabase";
-import { matchClients, createClient, updateClient } from "./clients";
+import { matchClients, createClient, updateClient, listClients } from "./clients";
 import { createReminder, formatWhen, scheduleQuoteReminders, cancelQuoteReminders } from "./reminders";
 import { answerQuery, ParseContext } from "./anthropic";
 import { logLlm } from "./billing";
 import { money, periodLabel, clientSummary, businessLang, t } from "./templates";
-import { normalizeAmount, normalizePeriod, normalizeStatus, normalizeName, normalizeAddress, computeNextService, advanceService } from "./normalize";
-import type { Business, Client, ParsedAction, ParseResult } from "./types";
+import {
+  normalizeAmount, normalizePeriod, normalizeStatus, normalizeName, normalizeAddress,
+  computeNextService, advanceService, todayInTz,
+} from "./normalize";
+import {
+  generateDueCharges, createManualCharge, createJobCharge, applyPaymentToCharges,
+  clientBalance, openBalances, totalOutstanding,
+} from "./charges";
+import { config } from "./config";
+import type { Business, Client, Charge, Job, ParsedAction, ParseResult, PendingState, ServiceInterval, Lang } from "./types";
 
 /** Monthly-equivalent value of a client's recurring amount (0 for one-time). */
 export function monthlyEquivalent(c: Pick<Client, "amount" | "billing_period">): number {
@@ -18,44 +26,164 @@ export function monthlyEquivalent(c: Pick<Client, "amount" | "billing_period">):
   }
 }
 
+/** Conversation memory carried across one webhook execution; persisted by inbound.ts. */
+export interface ActionSession {
+  pending?: PendingState | null;
+  lang?: Lang; // per-phone language override
+}
+
+const PENDING_TTL_MS = 15 * 60 * 1000;
+function pendingExpiry(): string {
+  return new Date(Date.now() + PENDING_TTL_MS).toISOString();
+}
+
 /**
  * Execute every action parsed from a message and return the combined SMS reply.
  * The reply always reflects the CLEAN normalized data, in the operator's language.
+ * Each action is isolated: one failing action reports itself without killing the rest.
  */
 export async function executeParsed(
   business: Business,
   result: ParseResult,
   ctx: ParseContext,
-  sourceMessageId: string | null
+  sourceMessageId: string | null,
+  session: ActionSession = {},
+  rawText = ""
 ): Promise<string> {
-  const lang = businessLang(business);
+  const lang = session.lang ?? businessLang(business);
 
   // The parser asked us to clarify rather than guess.
   if (result.needs_clarification) return result.needs_clarification;
 
   const replies: string[] = [];
   for (const action of result.actions) {
-    replies.push(await runAction(business, action, ctx, sourceMessageId));
+    try {
+      replies.push(await runAction(business, action, ctx, sourceMessageId, session, lang, rawText));
+    } catch (e) {
+      console.error(`[intents] ${action.intent} failed:`, e);
+      replies.push(t.errorSaving(lang));
+    }
   }
   const out = replies.filter(Boolean).join("\n");
   return out || t.helpHint(lang);
 }
 
-async function runAction(business: Business, p: ParsedAction, ctx: ParseContext, sourceMessageId: string | null): Promise<string> {
+async function runAction(
+  business: Business, p: ParsedAction, ctx: ParseContext, sourceMessageId: string | null,
+  session: ActionSession, lang: Lang, rawText: string
+): Promise<string> {
   switch (p.intent) {
-    case "log_quote": return logQuote(business, p, ctx);
-    case "update_status": return updateStatus(business, p, ctx);
-    case "log_job": return logJob(business, p);
-    case "log_payment": return logPayment(business, p);
-    case "set_reminder": return setReminder(business, p, sourceMessageId);
-    case "correction": return applyCorrection(business, p);
+    case "log_quote": return logQuote(business, p, ctx, session, lang);
+    case "update_status": return updateStatus(business, p, ctx, session, lang);
+    case "log_job": return logJob(business, p, session, lang);
+    case "log_payment": return logPayment(business, p, session, lang);
+    case "set_reminder": return setReminder(business, p, sourceMessageId, lang);
+    case "correction": return applyCorrection(business, p, lang);
     case "query": return runQuery(business, p, ctx);
+    case "log_expense": return logExpense(business, p, lang);
+    case "update_client_info": return updateClientInfo(business, p, session, lang);
+    case "pause_client": return pauseClient(business, p, session, lang);
+    case "resume_client": return resumeClient(business, p, session, lang);
+    case "skip_visit": return skipVisit(business, p, session, lang);
+    case "reschedule_visit": return rescheduleVisit(business, p, session, lang);
+    case "bulk_reschedule": return bulkReschedule(business, p, lang);
+    case "price_change": return priceChange(business, p, session, lang);
+    case "request_invoice": return requestInvoice(business, p, session, lang);
     case "help":
-    default: return t.helpHint(businessLang(business));
+    default:
+      // Explicit "help" gets the menu; anything unparsed gets recovery copy.
+      return /^\s*(help|ayuda|menu|menú)\s*$/i.test(rawText) || p.confidence >= 0.4
+        ? t.helpHint(lang)
+        : t.didntCatch(lang);
   }
 }
 
-/** Build a service-schedule patch (interval/day/next date) from a parsed action. */
+// ── Client resolution with conversation memory ────────────────────────────────
+/**
+ * Resolve the client an action refers to. On ambiguity or no-match, stores a
+ * pending question in the session (persisted per-phone) so the operator's NEXT
+ * text ("2", "5 oak", "yes") completes the action instead of dead-ending.
+ */
+async function resolveClient(
+  business: Business, p: ParsedAction, session: ActionSession, lang: Lang,
+  opts: { offerCreate?: boolean } = {}
+): Promise<{ client: Client | null; ask?: string }> {
+  if (p.client_id) {
+    const all = await listClients(business.id);
+    const byId = all.find((c) => c.id === p.client_id) ?? null;
+    if (byId) return { client: byId };
+  }
+  if (!p.client_name && !p.address) return { client: null };
+
+  const matches = await matchClients(business.id, { name: p.client_name, address: p.address });
+  if (matches.length === 1) return { client: matches[0] };
+  if (matches.length > 1) {
+    const shown = matches.slice(0, 4);
+    session.pending = { kind: "which_client", action: p, candidateIds: shown.map((c) => c.id), expiresAt: pendingExpiry() };
+    const opts_ = shown.map((c, i) => `(${i + 1}) ${c.name}${c.address ? ` — ${c.address}` : ""}`).join("  ");
+    return { client: null, ask: t.whichClient(opts_, lang) };
+  }
+  // No match.
+  if (opts.offerCreate && p.client_name) {
+    session.pending = { kind: "confirm_create", action: p, expiresAt: pendingExpiry() };
+    return { client: null, ask: t.yesToAdd(p.client_name, lang) };
+  }
+  return { client: null, ask: t.notFound(p.client_name ?? p.address ?? "", lang) };
+}
+
+/** Resume a stored pending action with the operator's answer. Exported for inbound.ts. */
+export async function resolvePending(
+  business: Business, pending: PendingState, answer: string, ctx: ParseContext, session: ActionSession
+): Promise<string | null> {
+  const lang = session.lang ?? businessLang(business);
+  if (new Date(pending.expiresAt).getTime() < Date.now()) return null;
+  const a = answer.trim();
+
+  if (pending.kind === "which_client") {
+    const ids = pending.candidateIds ?? [];
+    let chosen: string | null = null;
+    const numM = a.match(/^\(?\s*([1-4])\s*\)?\.?$/);
+    if (numM) chosen = ids[Number(numM[1]) - 1] ?? null;
+    if (!chosen) {
+      // Try the answer as a name/address against the candidates only.
+      const all = await listClients(business.id);
+      const cands = all.filter((c) => ids.includes(c.id));
+      const norm = a.toLowerCase();
+      const hit = cands.filter((c) => c.name.toLowerCase().includes(norm) || (c.address ?? "").toLowerCase().includes(norm));
+      if (hit.length === 1) chosen = hit[0].id;
+    }
+    if (!chosen) return null; // unrelated text — fall through to a normal parse
+    const action: ParsedAction = { ...pending.action, client_id: chosen };
+    return runAction(business, action, ctx, null, session, lang, a);
+  }
+
+  if (pending.kind === "confirm_create") {
+    if (/^\s*(yes|yeah|yep|s[ií]|dale|ok)\s*[.!]?\s*$/i.test(a)) {
+      const p = pending.action;
+      const client = await createClient(business.id, {
+        name: p.client_name ?? "New client",
+        address: p.address,
+        status: p.intent === "log_quote" ? "quoted" : "active",
+      });
+      const action: ParsedAction = { ...p, client_id: client.id };
+      return runAction(business, action, ctx, null, session, lang, a);
+    }
+    if (/^\s*(no|nah|nope)\s*[.!]?\s*$/i.test(a)) {
+      return lang === "es" ? "Ok, no lo agregué." : "Ok, didn't add them.";
+    }
+    return null;
+  }
+
+  if (pending.kind === "missing_amount") {
+    const n = normalizeAmount(a);
+    if (n == null) return null;
+    const action: ParsedAction = { ...pending.action, amount: n };
+    return runAction(business, action, ctx, null, session, lang, a);
+  }
+  return null;
+}
+
+// ── Shared helpers ────────────────────────────────────────────────────────────
 function schedulePatch(p: ParsedAction, nowISO: string): Partial<Client> {
   if (!p.service_interval) return {};
   return {
@@ -75,24 +203,49 @@ function fmtDay(ymd: string | null | undefined, lang: string): string {
   return new Date(ymd + "T00:00:00").toLocaleDateString(lang === "es" ? "es-ES" : "en-US", { month: "short", day: "numeric" });
 }
 
-async function logQuote(business: Business, p: ParsedAction, ctx: ParseContext): Promise<string> {
-  const lang = businessLang(business);
-  if (!p.client_name && !p.address) return t.whoIsQuoteFor(lang);
+// ── Handlers ──────────────────────────────────────────────────────────────────
+async function logQuote(business: Business, p: ParsedAction, ctx: ParseContext, session: ActionSession, lang: Lang): Promise<string> {
+  if (!p.client_name && !p.address && !p.client_id) return t.whoIsQuoteFor(lang);
   const sched = schedulePatch(p, ctx.nowISO);
 
-  const matches = await matchClients(business.id, { name: p.client_name, address: p.address });
-  let client: Client;
-  if (matches.length === 1) {
+  let client: Client | null = null;
+  if (p.client_id) {
+    const all = await listClients(business.id);
+    client = all.find((c) => c.id === p.client_id) ?? null;
+  } else {
+    const matches = await matchClients(business.id, { name: p.client_name, address: p.address });
+    if (matches.length > 1) {
+      const shown = matches.slice(0, 4);
+      session.pending = { kind: "which_client", action: p, candidateIds: shown.map((c) => c.id), expiresAt: pendingExpiry() };
+      const opts = shown.map((c, i) => `(${i + 1}) ${c.name}${c.address ? ` — ${c.address}` : ""}`).join("  ");
+      return t.whichClient(opts, lang);
+    }
+    client = matches[0] ?? null;
+  }
+
+  // Guard: a new price for an ACTIVE client is a price update, not a re-quote.
+  // (Demoting them would drop MRR and restart follow-up nudges for a won client.)
+  if (client && client.status === "active" && p.amount != null) {
+    const updated = (await updateClient(client.id, {
+      amount: p.amount,
+      billing_period: p.billing_period ?? client.billing_period,
+      service_description: p.service_description ?? client.service_description,
+      ...sched,
+    })) ?? client;
+    return t.priceChanged(updated.name, `${money(p.amount)}${periodLabel(updated.billing_period, lang)}`, lang);
+  }
+
+  if (client) {
     client =
-      (await updateClient(matches[0].id, {
+      (await updateClient(client.id, {
         status: "quoted",
-        address: p.address ?? matches[0].address,
-        amount: p.amount ?? matches[0].amount,
-        billing_period: p.billing_period ?? matches[0].billing_period,
-        service_description: p.service_description ?? matches[0].service_description,
+        address: p.address ?? client.address,
+        amount: p.amount ?? client.amount,
+        billing_period: p.billing_period ?? client.billing_period,
+        service_description: p.service_description ?? client.service_description,
         last_nudged_at: null,
         ...sched,
-      })) ?? matches[0];
+      })) ?? client;
   } else {
     client = await createClient(business.id, {
       name: p.client_name ?? p.address ?? "New client",
@@ -107,32 +260,30 @@ async function logQuote(business: Business, p: ParsedAction, ctx: ParseContext):
 
   await scheduleQuoteReminders(business, client);
 
-  // Missing the price? Save what we have, then ask for it (don't store bad data).
-  if (client.amount == null) return t.whatAmount(client.name, lang);
+  // Missing the price? Save what we have, remember the question, ask for it.
+  if (client.amount == null) {
+    session.pending = { kind: "missing_amount", action: { ...p, client_id: client.id }, expiresAt: pendingExpiry() };
+    return t.whatAmount(client.name, lang);
+  }
   return t.quoteLogged(clientSummary(client, lang), lang);
 }
 
-async function updateStatus(business: Business, p: ParsedAction, ctx: ParseContext): Promise<string> {
-  const lang = businessLang(business);
+async function updateStatus(business: Business, p: ParsedAction, ctx: ParseContext, session: ActionSession, lang: Lang): Promise<string> {
   const sched = schedulePatch(p, ctx.nowISO);
   const hasSchedule = Object.keys(sched).length > 0;
   if (!p.status && !hasSchedule) return lang === "es" ? "¿Qué estado le pongo — activo, completado o perdido?" : "What status — active, completed, or lost?";
-  if (!p.client_name && !p.address) return lang === "es" ? "¿Cuál cliente? Dime el nombre o la dirección." : "Which client? Tell me the name or address.";
+  if (!p.client_name && !p.address && !p.client_id) return lang === "es" ? "¿Cuál cliente? Dime el nombre o la dirección." : "Which client? Tell me the name or address.";
 
-  const matches = await matchClients(business.id, { name: p.client_name, address: p.address });
-  if (matches.length === 0) return t.notFound(p.client_name ?? p.address ?? "", lang);
-  if (matches.length > 1) {
-    const opts = matches.slice(0, 4).map((c, i) => `(${i + 1}) ${c.name}${c.address ? ` — ${c.address}` : ""}`).join("  ");
-    return t.whichClient(opts, lang);
-  }
-  const c = matches[0];
+  const { client: c, ask } = await resolveClient(business, p, session, lang);
+  if (!c) return ask ?? t.notFound(p.client_name ?? p.address ?? "", lang);
+
   const patch: Partial<Client> = { ...sched };
   if (p.status) patch.status = p.status;
   await updateClient(c.id, patch);
   if (p.status && p.status !== "quoted") await cancelQuoteReminders(c.id);
-  if (p.status === "lost" || p.status === "completed") return t.clientRemoved(c.name, lang);
+  if (p.status === "completed") return t.clientCompleted(c.name, lang);
+  if (p.status === "lost") return t.clientLost(c.name, lang);
 
-  // Schedule confirmation (e.g. "Bob — every other week, Tuesday · next Jun 30")
   if (hasSchedule) {
     const when = [
       intervalWord(p.service_interval, lang),
@@ -145,45 +296,114 @@ async function updateStatus(business: Business, p: ParsedAction, ctx: ParseConte
   return t.statusUpdated(c.name, p.status!, lang);
 }
 
-async function logJob(business: Business, p: ParsedAction): Promise<string> {
-  const lang = businessLang(business);
-  const matches = p.client_name || p.address ? await matchClients(business.id, { name: p.client_name, address: p.address }) : [];
-  const client = matches.length === 1 ? matches[0] : null;
-  const performedOn = p.performed_on ?? new Date().toISOString().slice(0, 10);
+async function logJob(business: Business, p: ParsedAction, session: ActionSession, lang: Lang): Promise<string> {
+  const today = todayInTz(business.timezone);
+  const hasClientRef = Boolean(p.client_name || p.address || p.client_id);
+  let client: Client | null = null;
+  if (hasClientRef) {
+    const { client: c, ask } = await resolveClient(business, p, session, lang, { offerCreate: true });
+    if (!c && ask) return ask; // ambiguous or unknown — ask instead of orphaning the job
+    client = c;
+  }
+
+  // Future one-off ("mulch at the smiths next tuesday $450") → scheduled job.
+  if (p.scheduled_on && p.scheduled_on > today) {
+    await db().from("jobs").insert({
+      business_id: business.id,
+      client_id: client?.id ?? null,
+      description: p.job_description ?? "Job",
+      performed_on: null,
+      scheduled_on: p.scheduled_on,
+      amount: p.amount ?? null,
+      status: "scheduled",
+    });
+    return t.jobScheduled(
+      p.job_description ?? "job",
+      client?.name ?? (lang === "es" ? "cliente" : "client"),
+      fmtDay(p.scheduled_on, lang),
+      p.amount != null ? money(p.amount) : null,
+      lang
+    );
+  }
+
+  const performedOn = p.performed_on ?? today;
   await db().from("jobs").insert({
     business_id: business.id,
     client_id: client?.id ?? null,
     description: p.job_description ?? "Job",
     performed_on: performedOn,
+    status: "done",
+    amount: p.amount ?? null,
   });
-  // Advance the recurring schedule when a visit is logged.
-  if (client?.service_interval && client.next_service_on) {
-    const next = advanceService(client.next_service_on, client.service_interval as any);
-    if (next) await updateClient(client.id, { next_service_on: next });
+
+  // A priced one-off done = money now owed.
+  if (client && p.amount != null) {
+    await createJobCharge(business.id, client.id, p.amount, performedOn, p.job_description ?? null);
+  }
+
+  // Advance the recurring schedule — from whichever is later, the stored next
+  // date or the visit itself, so an overdue client doesn't stay overdue forever.
+  let nextStr = "";
+  if (client?.service_interval) {
+    const base = client.next_service_on && client.next_service_on > performedOn ? client.next_service_on : performedOn;
+    const next = advanceService(base, client.service_interval as ServiceInterval);
+    if (next) {
+      await updateClient(client.id, { next_service_on: next });
+      nextStr = t.jobNextVisit(fmtDay(next, lang), lang);
+    }
   }
   const who = client ? (lang === "es" ? `para ${client.name}` : `for ${client.name}`) : "";
-  return t.jobLogged(p.job_description ?? "job", who, performedOn, lang).replace(/\s+/g, " ").trim();
+  const base = t.jobLogged(p.job_description ?? "job", who, fmtDay(performedOn, lang), lang).replace(/\s+/g, " ").trim();
+  return base + nextStr;
 }
 
-async function logPayment(business: Business, p: ParsedAction): Promise<string> {
-  const lang = businessLang(business);
-  if (p.amount == null) return t.howMuchPayment(lang);
-  const matches = p.client_name ? await matchClients(business.id, { name: p.client_name }) : [];
-  const client = matches.length === 1 ? matches[0] : null;
-  const status = p.payment_status ?? "paid";
-  const paidOn = status === "paid" ? p.paid_on ?? new Date().toISOString().slice(0, 10) : null;
-  await db().from("payments").insert({ business_id: business.id, client_id: client?.id ?? null, amount: p.amount, paid_on: paidOn, status });
-  const who = client ? client.name : "";
-  if (status === "unpaid" || status === "overdue") {
-    const tag = status === "overdue" ? (lang === "es" ? " (atrasado)" : " (overdue)") : "";
-    return lang === "es" ? `Anotado ✅ ${who} debe ${money(p.amount)}${tag}.` : `Noted ✅ ${who} owes ${money(p.amount)}${tag}.`;
+async function logPayment(business: Business, p: ParsedAction, session: ActionSession, lang: Lang): Promise<string> {
+  if (p.amount == null) {
+    session.pending = { kind: "missing_amount", action: p, expiresAt: pendingExpiry() };
+    return t.howMuchPayment(lang);
   }
+  const hasClientRef = Boolean(p.client_name || p.client_id);
+  let client: Client | null = null;
+  if (hasClientRef) {
+    const { client: c, ask } = await resolveClient(business, p, session, lang, { offerCreate: true });
+    if (!c && ask) return ask; // never silently attach money to nobody
+    client = c;
+  }
+
+  const today = todayInTz(business.timezone);
+  const status = p.payment_status ?? "paid";
+
+  // "bob owes 450" → a receivable, not a payment.
+  if (status === "unpaid" || status === "overdue") {
+    await createManualCharge(business.id, client?.id ?? null, p.amount, today, p.job_description ?? null);
+    const who = client ? client.name : "";
+    const balance = client ? await clientBalance(business.id, client.id) : p.amount;
+    const tag = status === "overdue" ? (lang === "es" ? " (atrasado)" : " (overdue)") : "";
+    const total = balance > p.amount + 0.004 ? (lang === "es" ? ` Total pendiente: ${money(balance)}.` : ` Total owed: ${money(balance)}.`) : "";
+    return (lang === "es" ? `Anotado ✅ ${who} debe ${money(p.amount)}${tag}.` : `Noted ✅ ${who} owes ${money(p.amount)}${tag}.`) + total;
+  }
+
+  // Money in: record it and settle open charges oldest-first.
+  const paidOn = p.paid_on ?? today;
+  await db().from("payments").insert({
+    business_id: business.id, client_id: client?.id ?? null, amount: p.amount,
+    paid_on: paidOn, status: "paid", method: p.payment_method ?? null,
+  });
+
   const whoStr = client ? (lang === "es" ? ` de ${client.name}` : ` from ${client.name}`) : "";
-  return t.paymentLogged(money(p.amount), whoStr, paidOn ?? "", lang);
+  let base = t.paymentLogged(money(p.amount), whoStr, fmtDay(paidOn, lang), lang);
+  if (client) {
+    const balance = await applyPaymentToCharges(business.id, client.id, p.amount);
+    base += balance > 0.004 ? t.balanceRemaining(client.name, money(balance), lang) : t.allSettled(client.name, lang);
+  } else if (p.client_name) {
+    // resolveClient already asked; unreachable — kept for safety.
+  } else {
+    base += t.paymentUnlinked(lang);
+  }
+  return base;
 }
 
-async function setReminder(business: Business, p: ParsedAction, sourceMessageId: string | null): Promise<string> {
-  const lang = businessLang(business);
+async function setReminder(business: Business, p: ParsedAction, sourceMessageId: string | null, lang: Lang): Promise<string> {
   if (!p.due_at) return t.whenRemind(lang);
   const text = p.reminder_text || (lang === "es" ? "dar seguimiento" : "follow up");
   const matches = p.client_name ? await matchClients(business.id, { name: p.client_name }) : [];
@@ -193,8 +413,7 @@ async function setReminder(business: Business, p: ParsedAction, sourceMessageId:
 }
 
 /** Apply a correction ("no it's 333 not 233", "change angela to weekly") to the last-touched client. */
-async function applyCorrection(business: Business, p: ParsedAction): Promise<string> {
-  const lang = businessLang(business);
+async function applyCorrection(business: Business, p: ParsedAction, lang: Lang): Promise<string> {
   const { data: rows } = await db().from("clients").select("*").eq("business_id", business.id).order("updated_at", { ascending: false }).limit(1);
   const last = ((rows ?? []) as Client[])[0];
   if (!last) return lang === "es" ? "No hay nada que corregir todavía." : "Nothing to fix yet.";
@@ -207,13 +426,11 @@ async function applyCorrection(business: Business, p: ParsedAction): Promise<str
   const status = normalizeStatus(text);
   if (status) patch.status = status;
 
-  // "it's A not B" / "A not B" -> A is the correct value.
   const notM = text.match(/([\d.,$kK]+)\s+not\s+[\d.,$kK]+/i) || text.match(/no es .* es ([\d.,$kK]+)/i);
   const amtToken = notM ? notM[1] : (text.match(/\$\s?[\d.,kK]+/) || [])[0];
   if (amtToken) {
     const n = normalizeAmount(amtToken);
     if (n != null) {
-      // If the last client has an address and the token is a small whole number, it's likely a house number.
       if (last.address && /^\d{1,5}$/.test(amtToken.replace(/[^\d]/g, "")) && !/\$/.test(text) && !/(month|week|mo|wk|mes|semana)/i.test(text)) {
         patch.address = normalizeAddress(last.address.replace(/^\d+/, amtToken.replace(/[^\d]/g, "")));
       } else {
@@ -221,7 +438,6 @@ async function applyCorrection(business: Business, p: ParsedAction): Promise<str
       }
     }
   }
-  // "change <name> to ..." also lets us re-target, but we keep it on the last client for simplicity.
   const newName = text.match(/(?:name to|nombre a)\s+([a-zà-ÿ .'’-]+)/i);
   if (newName) patch.name = normalizeName(newName[1]);
 
@@ -232,6 +448,163 @@ async function applyCorrection(business: Business, p: ParsedAction): Promise<str
   return t.quoteLogged(clientSummary(updated, lang), lang);
 }
 
+// ── New roadmap handlers ──────────────────────────────────────────────────────
+async function logExpense(business: Business, p: ParsedAction, lang: Lang): Promise<string> {
+  if (p.amount == null) return lang === "es" ? "¿De cuánto fue el gasto?" : "How much was the expense?";
+  const today = todayInTz(business.timezone);
+  const category = p.expense_category ?? "other";
+  const description = p.note_text ?? p.job_description ?? null;
+  await db().from("expenses").insert({
+    business_id: business.id, amount: p.amount, category, description, spent_on: p.performed_on ?? today,
+  });
+  return t.expenseLogged(money(p.amount), category, description ?? "", lang);
+}
+
+async function updateClientInfo(business: Business, p: ParsedAction, session: ActionSession, lang: Lang): Promise<string> {
+  const { client, ask } = await resolveClient(business, p, session, lang, { offerCreate: true });
+  if (!client) return ask ?? t.notFound(p.client_name ?? "", lang);
+
+  const patch: Partial<Client> = {};
+  const saved: string[] = [];
+  if (p.phone) { patch.phone = p.phone; saved.push(`📞 ${p.phone}`); }
+  if (p.email) { patch.email = p.email; saved.push(`✉️ ${p.email}`); }
+  if (p.referred_by) { patch.referred_by = p.referred_by; saved.push(lang === "es" ? `referido por ${p.referred_by}` : `referred by ${p.referred_by}`); }
+  if (p.note_text) {
+    patch.notes = client.notes ? `${client.notes}\n${p.note_text}` : p.note_text;
+    saved.push(lang === "es" ? `nota: "${p.note_text}"` : `note: "${p.note_text}"`);
+  }
+  if (!saved.length) return lang === "es" ? `¿Qué guardo para ${client.name}?` : `What should I save for ${client.name}?`;
+  await updateClient(client.id, patch);
+  return t.infoSaved(client.name, saved.join(" · "), lang);
+}
+
+async function pauseClient(business: Business, p: ParsedAction, session: ActionSession, lang: Lang): Promise<string> {
+  const { client, ask } = await resolveClient(business, p, session, lang);
+  if (!client) return ask ?? t.notFound(p.client_name ?? "", lang);
+  await updateClient(client.id, { status: "paused", paused_until: p.pause_until ?? null, next_service_on: null });
+  await cancelQuoteReminders(client.id);
+  if (p.pause_until) {
+    const resumeText = lang === "es" ? `Reanudar servicio de ${client.name}?` : `Resume service for ${client.name}?`;
+    await createReminder({
+      businessId: business.id, clientId: client.id, text: resumeText,
+      dueISO: new Date(p.pause_until + "T13:00:00Z").toISOString(), kind: "manual",
+    });
+  }
+  return t.clientPaused(client.name, p.pause_until ? fmtDay(p.pause_until, lang) : null, lang);
+}
+
+async function resumeClient(business: Business, p: ParsedAction, session: ActionSession, lang: Lang): Promise<string> {
+  const { client, ask } = await resolveClient(business, p, session, lang);
+  if (!client) return ask ?? t.notFound(p.client_name ?? "", lang);
+  const next = client.service_interval
+    ? computeNextService(client.service_interval as ServiceInterval, client.service_day, new Date().toISOString())
+    : null;
+  await updateClient(client.id, { status: "active", paused_until: null, next_service_on: next ?? null });
+  return t.clientResumed(client.name, next ? fmtDay(next, lang) : null, lang);
+}
+
+async function skipVisit(business: Business, p: ParsedAction, session: ActionSession, lang: Lang): Promise<string> {
+  const { client, ask } = await resolveClient(business, p, session, lang);
+  if (!client) return ask ?? t.notFound(p.client_name ?? "", lang);
+  const interval = (client.service_interval as ServiceInterval) ?? "weekly";
+  const base = client.next_service_on ?? todayInTz(business.timezone);
+  const next = advanceService(base, interval);
+  if (!next) return lang === "es" ? `${client.name} no tiene visitas programadas.` : `${client.name} has no scheduled visits.`;
+  await updateClient(client.id, { next_service_on: next });
+  return t.visitSkipped(client.name, fmtDay(next, lang), lang);
+}
+
+async function rescheduleVisit(business: Business, p: ParsedAction, session: ActionSession, lang: Lang): Promise<string> {
+  const { client, ask } = await resolveClient(business, p, session, lang);
+  if (!client) return ask ?? t.notFound(p.client_name ?? "", lang);
+  if (!p.target_date) return lang === "es" ? `¿Para cuándo muevo a ${client.name}?` : `When should I move ${client.name} to?`;
+  await updateClient(client.id, { next_service_on: p.target_date });
+  return t.visitMoved(client.name, fmtDay(p.target_date, lang), lang);
+}
+
+/** "rained out, push today to tomorrow" — shift every stop due (or overdue) today. */
+async function bulkReschedule(business: Business, p: ParsedAction, lang: Lang): Promise<string> {
+  const today = todayInTz(business.timezone);
+  // Default target: tomorrow in the business timezone.
+  const target = p.target_date && p.target_date > today
+    ? p.target_date
+    : new Date(new Date(today + "T12:00:00Z").getTime() + 86400000).toISOString().slice(0, 10);
+
+  const { data: rows } = await db().from("clients").select("*").eq("business_id", business.id).eq("status", "active");
+  const due = ((rows ?? []) as Client[]).filter((c) => c.next_service_on && c.next_service_on <= today);
+  if (!due.length) return t.nothingDueToday(lang);
+  for (const c of due) await updateClient(c.id, { next_service_on: target });
+  const names = due.slice(0, 8).map((c) => c.name).join(", ") + (due.length > 8 ? "…" : "");
+  return t.bulkMoved(names, fmtDay(target, lang), due.length, lang);
+}
+
+async function priceChange(business: Business, p: ParsedAction, session: ActionSession, lang: Lang): Promise<string> {
+  const { client, ask } = await resolveClient(business, p, session, lang);
+  if (!client) return ask ?? t.notFound(p.client_name ?? "", lang);
+  if (p.amount == null) {
+    session.pending = { kind: "missing_amount", action: { ...p, client_id: client.id }, expiresAt: pendingExpiry() };
+    return lang === "es" ? `¿Cuál es el nuevo precio para ${client.name}?` : `What's the new price for ${client.name}?`;
+  }
+  const updated = (await updateClient(client.id, {
+    amount: p.amount,
+    billing_period: p.billing_period ?? client.billing_period,
+  })) ?? client;
+  return t.priceChanged(updated.name, `${money(p.amount)}${periodLabel(updated.billing_period, lang)}`, lang);
+}
+
+/** "invoice bob" / "receipt bob" → a forwardable link (FieldText never texts the customer). */
+async function requestInvoice(business: Business, p: ParsedAction, session: ActionSession, lang: Lang): Promise<string> {
+  const { client, ask } = await resolveClient(business, p, session, lang);
+  if (!client) return ask ?? t.notFound(p.client_name ?? "", lang);
+  const kind = p.invoice_kind ?? "invoice";
+  const today = todayInTz(business.timezone);
+
+  let lines: { description: string; amount: number; due_on?: string }[] = [];
+  if (kind === "invoice") {
+    const { data: rows } = await db()
+      .from("charges").select("*")
+      .eq("business_id", business.id).eq("client_id", client.id)
+      .in("status", ["open", "partial"])
+      .order("due_on", { ascending: true });
+    lines = ((rows ?? []) as Charge[]).map((ch) => ({
+      description: ch.description || (lang === "es" ? "Servicio" : "Service"),
+      amount: Number(ch.amount) - Number(ch.paid_amount),
+      due_on: ch.due_on,
+    })).filter((l) => l.amount > 0.004);
+    if (!lines.length) return t.noOpenBalance(client.name, lang);
+  } else {
+    const { data: rows } = await db()
+      .from("payments").select("*")
+      .eq("business_id", business.id).eq("client_id", client.id)
+      .order("created_at", { ascending: false }).limit(1);
+    const last = ((rows ?? []) as { amount: number; paid_on: string | null }[])[0];
+    if (!last) return lang === "es" ? `No hay pagos registrados de ${client.name}.` : `No payments on file for ${client.name}.`;
+    lines = [{ description: lang === "es" ? "Pago recibido" : "Payment received", amount: Number(last.amount), due_on: last.paid_on ?? today }];
+  }
+
+  const total = lines.reduce((s, l) => s + l.amount, 0);
+  const { data: inv, error } = await db().from("invoices").insert({
+    business_id: business.id,
+    client_id: client.id,
+    kind,
+    payload: {
+      business_name: business.name,
+      client_name: client.name,
+      client_address: client.address,
+      lines, total,
+      payment_note: business.settings?.payment_note ?? null,
+      lang,
+      date: today,
+    },
+  }).select("*").single();
+  if (error || !inv) throw new Error(`invoice create failed: ${error?.message}`);
+
+  const url = `${config.appUrl()}/i/${(inv as { id: string }).id}`;
+  return kind === "invoice"
+    ? t.invoiceLink(client.name, money(total), url, lang)
+    : t.receiptLink(client.name, money(total), url, lang);
+}
+
 async function runQuery(business: Business, p: ParsedAction, ctx: ParseContext): Promise<string> {
   const snapshot = await buildSnapshot(business);
   const { text, usage } = await answerQuery(p.query_text || "status", snapshot, ctx);
@@ -239,29 +612,65 @@ async function runQuery(business: Business, p: ParsedAction, ctx: ParseContext):
   return text;
 }
 
+// ── Query snapshot: everything the operator actually asks about ──────────────
 export async function buildSnapshot(business: Business): Promise<string> {
   const lang = businessLang(business);
+  const today = todayInTz(business.timezone);
+  const monthStart = today.slice(0, 7) + "-01";
+
   const { data: clientRows } = await db().from("clients").select("*").eq("business_id", business.id);
   const clients = (clientRows ?? []) as Client[];
+  const nameOf = (id: string | null) => clients.find((c) => c.id === id)?.name ?? "(no client)";
   const quoted = clients.filter((c) => c.status === "quoted");
   const active = clients.filter((c) => c.status === "active");
+  const paused = clients.filter((c) => c.status === "paused");
   const mrr = active.reduce((sum, c) => sum + monthlyEquivalent(c), 0);
 
-  const { data: reminderRows } = await db().from("reminders").select("*").eq("business_id", business.id).eq("status", "pending").order("due_at", { ascending: true });
-  const { data: paymentRows } = await db().from("payments").select("*").eq("business_id", business.id).order("created_at", { ascending: false }).limit(20);
-  const payments = (paymentRows ?? []) as { amount: number; status?: string; client_id: string | null; paid_on: string | null; created_at?: string }[];
-  const outstanding = payments.filter((p) => p.status === "unpaid" || p.status === "overdue").reduce((s, p) => s + Number(p.amount), 0);
+  const [{ data: reminderRows }, { data: paymentRows }, { data: jobRows }, balances] = await Promise.all([
+    db().from("reminders").select("*").eq("business_id", business.id).eq("status", "pending").order("due_at", { ascending: true }),
+    db().from("payments").select("*").eq("business_id", business.id).order("created_at", { ascending: false }).limit(20),
+    db().from("jobs").select("*").eq("business_id", business.id).order("performed_on", { ascending: false }).limit(15),
+    openBalances(business.id),
+  ]);
+
+  const payments = (paymentRows ?? []) as { amount: number; client_id: string | null; paid_on: string | null; created_at?: string; method?: string | null }[];
+  const mtd = payments
+    .filter((p) => (p.paid_on ?? p.created_at?.slice(0, 10) ?? "") >= monthStart)
+    .reduce((s, p) => s + Number(p.amount), 0);
 
   const lines: string[] = [];
+  lines.push(`TODAY: ${today}`);
   lines.push(`OPEN QUOTES (need follow-up): ${quoted.length}`);
   for (const c of quoted) lines.push(`- ${c.name}${c.address ? ` (${c.address})` : ""}: ${money(c.amount)}${periodLabel(c.billing_period, lang)}${c.service_description ? `, ${c.service_description}` : ""}`);
   lines.push(`ACTIVE CLIENTS: ${active.length}`);
-  for (const c of active) lines.push(`- ${c.name}: ${money(c.amount)}${periodLabel(c.billing_period, lang)}${c.service_description ? `, ${c.service_description}` : ""}${c.service_interval ? `, ${c.service_interval}${c.next_service_on ? ` (next ${c.next_service_on})` : ""}` : ""}`);
+  for (const c of active) lines.push(`- ${c.name}${c.address ? ` (${c.address})` : ""}: ${money(c.amount)}${periodLabel(c.billing_period, lang)}${c.service_description ? `, ${c.service_description}` : ""}${c.phone ? `, ph ${c.phone}` : ""}${c.service_day ? `, ${c.service_day}s` : ""}${c.next_service_on ? ` (next visit ${c.next_service_on})` : ""}`);
+  if (paused.length) {
+    lines.push(`PAUSED CLIENTS: ${paused.length}`);
+    for (const c of paused) lines.push(`- ${c.name}${c.paused_until ? ` (until ${c.paused_until})` : ""}`);
+  }
+
+  // Route by weekday — answers "what's my monday look like?"
+  const byDay = new Map<string, string[]>();
+  for (const c of active) {
+    if (!c.service_day) continue;
+    byDay.set(c.service_day, [...(byDay.get(c.service_day) ?? []), `${c.name}${c.address ? ` (${c.address})` : ""}`]);
+  }
+  if (byDay.size) {
+    lines.push(`ROUTE BY DAY:`);
+    for (const [day, names] of byDay) lines.push(`- ${day}: ${names.join(", ")}`);
+  }
+
   lines.push(`MONTHLY RECURRING REVENUE (MRR): ${money(Math.round(mrr))}`);
-  lines.push(`OUTSTANDING / UNPAID: ${money(outstanding)}`);
+  lines.push(`COLLECTED THIS MONTH: ${money(mtd)}`);
+  lines.push(`WHO OWES (open balances): ${balances.length ? "" : "nobody"}`);
+  for (const b of balances) lines.push(`- ${nameOf(b.client_id)}: ${money(b.balance)} (oldest due ${b.oldest_due})`);
   lines.push(`UPCOMING REMINDERS: ${(reminderRows ?? []).length}`);
-  for (const r of (reminderRows ?? []) as any[]) lines.push(`- ${r.text} (due ${formatWhen(r.due_at, business.timezone, lang)})`);
-  lines.push(`RECENT PAYMENTS: ${(paymentRows ?? []).length}`);
-  for (const r of (paymentRows ?? []) as any[]) lines.push(`- ${money(r.amount)} on ${r.paid_on ?? r.created_at?.slice(0, 10)}`);
+  for (const r of (reminderRows ?? []) as { text: string; due_at: string }[]) lines.push(`- ${r.text} (due ${formatWhen(r.due_at, business.timezone, lang)})`);
+  lines.push(`RECENT PAYMENTS (newest first):`);
+  for (const r of payments) lines.push(`- ${money(r.amount)} from ${nameOf(r.client_id)} on ${r.paid_on ?? r.created_at?.slice(0, 10)}${r.method ? ` (${r.method})` : ""}`);
+  lines.push(`RECENT JOBS (newest first):`);
+  for (const j of (jobRows ?? []) as Job[]) lines.push(`- ${j.description} for ${nameOf(j.client_id)} on ${j.performed_on ?? j.scheduled_on}${j.status === "scheduled" ? " (scheduled)" : ""}`);
   return lines.join("\n");
 }
+
+export { generateDueCharges, totalOutstanding, openBalances };

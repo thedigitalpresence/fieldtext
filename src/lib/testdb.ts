@@ -21,7 +21,11 @@ type Table =
   | "payments"
   | "reminders"
   | "messages"
-  | "billing_events";
+  | "billing_events"
+  | "charges"
+  | "expenses"
+  | "signups"
+  | "invoices";
 type Store = Record<Table, Row[]>;
 
 const FILE = path.join(process.cwd(), ".fieldtext-test-db.json");
@@ -56,6 +60,8 @@ function seed(): Store {
         label: "Owner cell",
         is_primary: true,
         opted_out: false,
+        language: null,
+        pending_state: null,
         created_at: now,
       },
     ],
@@ -65,12 +71,23 @@ function seed(): Store {
     reminders: [],
     messages: [],
     billing_events: [],
+    charges: [],
+    expenses: [],
+    signups: [],
+    invoices: [],
   };
 }
 
 function load(): Store {
   try {
-    if (fs.existsSync(FILE)) return JSON.parse(fs.readFileSync(FILE, "utf8")) as Store;
+    if (fs.existsSync(FILE)) {
+      const store = JSON.parse(fs.readFileSync(FILE, "utf8")) as Store;
+      // Backfill tables added after the file was created (schema evolution).
+      for (const t of ["charges", "expenses", "signups", "invoices"] as Table[]) {
+        if (!Array.isArray(store[t])) store[t] = [];
+      }
+      return store;
+    }
   } catch (e) {
     console.error("[testdb] failed to read store, reseeding:", e);
   }
@@ -86,7 +103,7 @@ type Result = { data: any; error: { message: string } | null };
 
 class Query {
   private filters: Array<(r: Row) => boolean> = [];
-  private _order?: { col: string; asc: boolean };
+  private _orders: { col: string; asc: boolean }[] = [];
   private _take?: number;
   private action: "select" | "insert" | "update" = "select";
   private payload: any = null;
@@ -113,7 +130,8 @@ class Query {
   lte(col: string, val: any) { this.filters.push((r) => r[col] <= val); return this; }
   in(col: string, vals: any[]) { this.filters.push((r) => vals.includes(r[col])); return this; }
   order(col: string, opts?: { ascending?: boolean }) {
-    this._order = { col, asc: opts?.ascending !== false };
+    // Chained like real supabase: multiple .order() calls compose (primary first).
+    this._orders.push({ col, asc: opts?.ascending !== false });
     return this;
   }
   limit(n: number) { this._take = n; return this; }
@@ -145,9 +163,14 @@ class Query {
     }
 
     let out = rows.filter((r) => this.filters.every((f) => f(r))).map((r) => ({ ...r }));
-    if (this._order) {
-      const { col, asc } = this._order;
-      out.sort((a, b) => (a[col] < b[col] ? (asc ? -1 : 1) : a[col] > b[col] ? (asc ? 1 : -1) : 0));
+    if (this._orders.length) {
+      out.sort((a, b) => {
+        for (const { col, asc } of this._orders) {
+          if (a[col] < b[col]) return asc ? -1 : 1;
+          if (a[col] > b[col]) return asc ? 1 : -1;
+        }
+        return 0;
+      });
     }
     if (this._take != null) out = out.slice(0, this._take);
     return { data: out, error: null };
@@ -155,6 +178,8 @@ class Query {
 
   private execOne(allowNull: boolean): Result {
     const arr = (this.execList().data as Row[]) ?? [];
+    // Match real supabase .single(): >1 row is an error, not "first wins".
+    if (arr.length > 1 && this.action === "select") return { data: null, error: { message: "Results contain more than one row" } };
     const first = arr.length > 0 ? arr[0] : null;
     if (!first && !allowNull) return { data: null, error: { message: "No rows found" } };
     return { data: first, error: null };

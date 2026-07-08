@@ -18,14 +18,18 @@ export async function POST(req: NextRequest) {
   const params: Record<string, string> = {};
   for (const [k, v] of form.entries()) params[k] = String(v);
 
-  // Verify the request really came from Twilio (recommended).
-  // Disable for local testing only: TWILIO_VALIDATE_SIGNATURE=false
-  if ((process.env.TWILIO_VALIDATE_SIGNATURE ?? "true").toLowerCase() !== "false") {
+  // Verify the request really came from Twilio. The env bypass exists for local
+  // testing ONLY — in production builds it is ignored (audit finding: this flag
+  // was accidentally copied into prod env and silently disabled validation).
+  const allowBypass = process.env.NODE_ENV !== "production" || process.env.LOCAL_TEST === "true";
+  const bypassRequested = (process.env.TWILIO_VALIDATE_SIGNATURE ?? "true").toLowerCase() === "false";
+  if (!(allowBypass && bypassRequested)) {
     const signature = req.headers.get("x-twilio-signature") || "";
     const url = `${config.appUrl()}/api/sms/inbound`;
     const valid = twilio.validateRequest(config.twilio.authToken(), signature, url, params);
     if (!valid) {
-      console.warn("[api/sms/inbound] invalid Twilio signature");
+      // Most common cause: NEXT_PUBLIC_APP_URL doesn't exactly match the URL Twilio posts to.
+      console.warn(`[api/sms/inbound] invalid Twilio signature (validated against ${url})`);
       return new NextResponse("Forbidden", { status: 403 });
     }
   }
@@ -36,6 +40,7 @@ export async function POST(req: NextRequest) {
       to: params.To,
       body: params.Body ?? "",
       messageSid: params.MessageSid,
+      numMedia: Number(params.NumMedia ?? 0) || 0,
     });
     return new NextResponse(outcome.twiml, { status: 200, headers: XML_HEADERS });
   } catch (err) {

@@ -25,8 +25,8 @@ export function periodLabel(p: string | null | undefined, lang: Lang = "en"): st
   return PERIOD_LABEL[lang][p as BillingPeriod] ?? ` ${p}`;
 }
 const STATUS_WORD: Record<Lang, Record<ClientStatus, string>> = {
-  en: { quoted: "Quoted", active: "Active", completed: "Completed", lost: "Lost" },
-  es: { quoted: "Cotizado", active: "Activo", completed: "Completado", lost: "Perdido" },
+  en: { quoted: "Quoted", active: "Active", completed: "Completed", lost: "Lost", paused: "Paused" },
+  es: { quoted: "Cotizado", active: "Activo", completed: "Completado", lost: "Perdido", paused: "Pausado" },
 };
 export function statusWord(s: ClientStatus, lang: Lang = "en"): string {
   return STATUS_WORD[lang][s];
@@ -56,14 +56,66 @@ export const t = {
       ? `Actualizado ✅ ${name} → ${statusWord(status, lang)}.`
       : `Updated ✅ ${name} → ${statusWord(status, lang)}.`,
 
-  clientRemoved: (name: string, lang: Lang) =>
-    lang === "es" ? `Listo ✅ Quité a ${name} de tu lista.` : `Got it ✅ Removed ${name} from your list.`,
+  // Distinct copy per outcome — a routine "job done" must never read like a delete.
+  clientCompleted: (name: string, lang: Lang) =>
+    lang === "es"
+      ? `Marqué a ${name} como completado ✅ (ya no está en tu lista activa). Si querías registrar una visita, responde "fix".`
+      : `Marked ${name} completed ✅ (off your active list). If you meant a finished visit, reply "fix".`,
+  clientLost: (name: string, lang: Lang) =>
+    lang === "es" ? `Marqué a ${name} como perdido. Responde "fix" para corregir.` : `Marked ${name} lost. Reply "fix" to correct.`,
 
   jobLogged: (desc: string, who: string, date: string, lang: Lang) =>
     lang === "es" ? `Registrado ✅ ${desc} ${who} el ${date}.` : `Logged ✅ ${desc} ${who} on ${date}.`,
+  jobNextVisit: (date: string, lang: Lang) =>
+    lang === "es" ? ` Próxima visita ${date}.` : ` Next visit ${date}.`,
+  jobScheduled: (desc: string, name: string, date: string, amount: string | null, lang: Lang) =>
+    lang === "es"
+      ? `Agendado ✅ ${desc} para ${name} el ${date}${amount ? ` (${amount})` : ""}.`
+      : `Scheduled ✅ ${desc} for ${name} on ${date}${amount ? ` (${amount})` : ""}.`,
 
   paymentLogged: (amount: string, who: string, date: string, lang: Lang) =>
     lang === "es" ? `Registrado ✅ ${amount}${who} el ${date}.` : `Recorded ✅ ${amount}${who} on ${date}.`,
+  balanceRemaining: (name: string, balance: string, lang: Lang) =>
+    lang === "es" ? ` ${name} aún debe ${balance}.` : ` ${name} still owes ${balance}.`,
+  allSettled: (name: string, lang: Lang) => (lang === "es" ? ` ${name} está al corriente ✅` : ` ${name} is all settled ✅`),
+  paymentUnlinked: (lang: Lang) =>
+    lang === "es"
+      ? ` ⚠️ Sin cliente asignado — responde con el nombre para vincularlo.`
+      : ` ⚠️ Not linked to a client — reply with the name to attach it.`,
+
+  // roadmap confirmations
+  expenseLogged: (amount: string, category: string, desc: string, lang: Lang) =>
+    lang === "es"
+      ? `Gasto ✅ ${amount} — ${desc || category}.`
+      : `Expense ✅ ${amount} — ${desc || category}.`,
+  infoSaved: (name: string, what: string, lang: Lang) =>
+    lang === "es" ? `Guardado ✅ ${name} — ${what}.` : `Saved ✅ ${name} — ${what}.`,
+  clientPaused: (name: string, until: string | null, lang: Lang) =>
+    lang === "es"
+      ? `Pausado ⏸ ${name}${until ? ` hasta ${until} (te recuerdo para reanudar)` : ""}. Fuera del calendario, no perdido.`
+      : `Paused ⏸ ${name}${until ? ` until ${until} (I'll remind you to resume)` : ""}. Off the schedule, not lost.`,
+  clientResumed: (name: string, next: string | null, lang: Lang) =>
+    lang === "es" ? `Reactivado ✅ ${name}${next ? ` — próxima visita ${next}` : ""}.` : `Resumed ✅ ${name}${next ? ` — next visit ${next}` : ""}.`,
+  visitSkipped: (name: string, next: string, lang: Lang) =>
+    lang === "es" ? `Saltado ✅ ${name} — próxima visita ${next}.` : `Skipped ✅ ${name} — next visit ${next}.`,
+  visitMoved: (name: string, date: string, lang: Lang) =>
+    lang === "es" ? `Movido ✅ ${name} → ${date}.` : `Moved ✅ ${name} → ${date}.`,
+  bulkMoved: (names: string, date: string, count: number, lang: Lang) =>
+    lang === "es"
+      ? `Movido ✅ ${count} parada(s) → ${date}: ${names}.`
+      : `Moved ✅ ${count} stop(s) → ${date}: ${names}.`,
+  nothingDueToday: (lang: Lang) =>
+    lang === "es" ? "No hay visitas pendientes hoy — nada que mover." : "No stops due today — nothing to move.",
+  priceChanged: (name: string, amount: string, lang: Lang) =>
+    lang === "es" ? `Precio actualizado ✅ ${name} → ${amount}. Sigue activo.` : `Price updated ✅ ${name} → ${amount}. Still active.`,
+  invoiceLink: (name: string, total: string, url: string, lang: Lang) =>
+    lang === "es"
+      ? `Factura para ${name} (${total}): ${url}\nReenvíala desde tu teléfono 👍`
+      : `Invoice for ${name} (${total}): ${url}\nForward it from your phone 👍`,
+  receiptLink: (name: string, total: string, url: string, lang: Lang) =>
+    lang === "es" ? `Recibo para ${name} (${total}): ${url}` : `Receipt for ${name} (${total}): ${url}`,
+  noOpenBalance: (name: string, lang: Lang) =>
+    lang === "es" ? `${name} no debe nada ahora mismo ✅` : `${name} doesn't owe anything right now ✅`,
 
   reminderSet: (when: string, text: string, lang: Lang) =>
     lang === "es" ? `Recordatorio listo ✅ Te aviso el ${when}: ${text}` : `Reminder set ✅ I'll text you ${when}: ${text}`,
@@ -99,12 +151,46 @@ export const t = {
   whenRemind: (lang: Lang) => (lang === "es" ? "¿Cuándo te recuerdo?" : "When should I remind you?"),
   didntCatch: (lang: Lang) =>
     lang === "es"
-      ? 'No entendí bien — prueba p. ej. "coticé a Jane en 5 Oak por $200/mes" o "recuérdame llamar a Jane el viernes".'
-      : 'I didn\'t catch that — try e.g. "quoted Jane at 5 Oak St for $200/mo" or "remind me to call Jane friday".',
+      ? 'No entendí bien — prueba p. ej. "coticé a Jane en 5 Oak por $200/mes" o "recuérdame llamar a Jane el viernes". Escribe AYUDA para ver todo.'
+      : 'I didn\'t catch that — try e.g. "quoted Jane at 5 Oak St for $200/mo" or "remind me to call Jane friday". Text HELP for the full menu.',
   errorSaving: (lang: Lang) =>
     lang === "es" ? "Algo salió mal al guardar. Intenta de nuevo." : "Something went wrong saving that. Try again.",
   helpHint: (lang: Lang) =>
     lang === "es"
-      ? "Puedo registrar cotizaciones, trabajos, pagos, cambios de estado y recordatorios — o responder preguntas como \"¿a quién tengo que dar seguimiento?\"."
-      : "I can log quotes, jobs, payments, status changes, and reminders — or answer questions like \"who do I need to follow up with?\".",
+      ? [
+          "FieldText — escribe como hablas:",
+          '• "coticé a Jane en 5 Oak por $200/mes"',
+          '• "corté el pasto de los Smith"',
+          '• "Bob pagó 300" · "Bob debe 450"',
+          '• "recuérdame llamar a Jane el viernes"',
+          '• "llovió, muévelo a mañana" · "pausa a Jones hasta abril"',
+          '• "factura Bob" · "gasté 84 en mulch"',
+          '• "¿quién me debe?" · "¿qué toca el lunes?"',
+          "Soporte: eric@fieldtextapp.com · STOP para darte de baja",
+        ].join("\n")
+      : [
+          "FieldText — just text like you talk:",
+          '• "quoted Jane at 5 Oak St for $200/mo"',
+          '• "mowed the smiths"',
+          '• "Bob paid 300" · "Bob owes 450"',
+          '• "remind me to call Jane friday"',
+          '• "rained out, push today to tomorrow" · "pause Jones til April"',
+          '• "invoice Bob" · "spent 84 on mulch"',
+          '• "who owes me?" · "what\'s Monday look like?"',
+          "Support: eric@fieldtextapp.com · Reply STOP to unsubscribe",
+        ].join("\n"),
+  cancelWhat: (lang: Lang) =>
+    lang === "es"
+      ? '¿Cancelar qué? Un recordatorio ("cancela el recordatorio de Jane"), un cliente ("perdimos a Jones") — o responde STOP para darte de baja de todos los mensajes.'
+      : 'Cancel what? A reminder ("cancel the Jane reminder"), a client ("lost the Jones account") — or reply STOP to unsubscribe from all texts.',
+  welcome: (ownerName: string, lang: Lang) =>
+    lang === "es"
+      ? `¡Bienvenido a FieldText, ${ownerName}! 🌱 Este número es tu libreta. Prueba ahora: "coticé a Maria en 12 Elm por $200/mes". Escribe AYUDA cuando quieras.`
+      : `Welcome to FieldText, ${ownerName}! 🌱 This number is your black book. Try it now: "quoted Maria at 12 Elm St for $200/mo". Text HELP anytime.`,
+  photoHint: (lang: Lang) =>
+    lang === "es"
+      ? "📸 Recibí tu foto — para cargar una lista de clientes desde una foto, usa Importar en tu panel: fieldtext.vercel.app/dashboard/import"
+      : "📸 Got your photo — to load a client list from a photo, use Import on your dashboard: fieldtext.vercel.app/dashboard/import",
+  yesToAdd: (name: string, lang: Lang) =>
+    lang === "es" ? `No encontré a "${name}". Responde SÍ para agregarlo, o manda el nombre correcto.` : `I don't know "${name}". Reply YES to add them, or send the right name.`,
 };

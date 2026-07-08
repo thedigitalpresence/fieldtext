@@ -1,10 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useFormStatus } from "react-dom";
 import Link from "next/link";
 import {
   FileText, UserCheck, Briefcase, DollarSign, Bell, MessageCircle, Languages,
   CalendarClock, Search, X, Check, Clock, Ban, Upload, Sun, Leaf, TrendingUp, AlertCircle,
+  Download, Loader2, ChevronRight, Phone, PauseCircle,
 } from "lucide-react";
 import type { ClientStatus, Lang } from "@/lib/types";
 import {
@@ -16,6 +18,7 @@ const STATUS_COLOR: Record<ClientStatus, string> = {
   active: "bg-green-100 text-green-800",
   completed: "bg-blue-100 text-blue-800",
   lost: "bg-gray-200 text-gray-600",
+  paused: "bg-sky-100 text-sky-800",
 };
 const ACTIVITY_ICON: Record<string, typeof FileText> = {
   log_quote: FileText, update_status: UserCheck, log_job: Briefcase, log_payment: DollarSign,
@@ -25,8 +28,10 @@ const ACTIVITY_ICON: Record<string, typeof FileText> = {
 type ClientView = {
   id: string; name: string; address: string | null; status: ClientStatus;
   amountStr: string; periodStr: string; service: string | null; notes: string | null;
+  phone: string | null; email: string | null;
   sentStr: string; sinceStr: string; nextStr: string | null;
   scheduleStr: string | null; nextServiceStr: string | null; serviceDay: string | null;
+  pausedUntilStr: string | null;
 };
 type Upcoming = {
   id: string; type: "quote" | "manual"; clientId: string | null;
@@ -58,11 +63,23 @@ interface Props {
 
 const TAP = "min-h-[44px]";
 const DAY_ORDER = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+/** Week rotated so TODAY leads — Thursday morning shows Thursday's route first. */
+function rotatedDays(): string[] {
+  const idx = (new Date().getDay() + 6) % 7; // JS sunday=0 → our monday-first index
+  return [...DAY_ORDER.slice(idx), ...DAY_ORDER.slice(0, idx)];
+}
 // Two distinct column tints for the pipeline.
 const COLUMN_TINT: Record<"quoted" | "active", { panel: string; chip: string }> = {
   quoted: { panel: "border-amber-200/70 bg-amber-50/60", chip: "bg-amber-100 text-amber-800" },
   active: { panel: "border-green-200/70 bg-green-50/60", chip: "bg-green-100 text-green-800" },
 };
+// Avatar hues hashed from the name so a 30-client roster scans at a glance.
+// Brand green deliberately excluded — status chips keep that meaning.
+const AVATAR_HUES = [
+  "bg-sky-100 text-sky-800", "bg-violet-100 text-violet-800", "bg-rose-100 text-rose-800",
+  "bg-amber-100 text-amber-800", "bg-teal-100 text-teal-800", "bg-indigo-100 text-indigo-800",
+  "bg-orange-100 text-orange-800", "bg-fuchsia-100 text-fuchsia-800",
+];
 
 export default function DashboardClient(props: Props) {
   const L = props.labels;
@@ -83,17 +100,22 @@ export default function DashboardClient(props: Props) {
   const selected = props.clients.find((c) => c.id === selectedId) ?? null;
   const activityShown = showAllActivity ? props.activity : props.activity.slice(0, 6);
 
-  // Active clients grouped by service day, ordered Mon→Sun with "no day set" last.
+  // Active clients grouped by service day, TODAY first, "no day set" then Paused last.
   const activeByDay = (list: ClientView[]) => {
     const groups = new Map<string, ClientView[]>();
     for (const c of list) {
-      const key = c.serviceDay && DAY_ORDER.includes(c.serviceDay) ? c.serviceDay : "__none";
+      const key = c.status === "paused" ? "__paused" : c.serviceDay && DAY_ORDER.includes(c.serviceDay) ? c.serviceDay : "__none";
       (groups.get(key) ?? groups.set(key, []).get(key)!).push(c);
     }
-    const order = [...DAY_ORDER.filter((d) => groups.has(d)), ...(groups.has("__none") ? ["__none"] : [])];
+    const week = rotatedDays();
+    const order = [
+      ...week.filter((d) => groups.has(d)),
+      ...(groups.has("__none") ? ["__none"] : []),
+      ...(groups.has("__paused") ? ["__paused"] : []),
+    ];
     return order.map((day) => ({
       day,
-      label: day === "__none" ? L.unscheduled : (L.weekdays?.[day] ?? day),
+      label: day === "__none" ? L.unscheduled : day === "__paused" ? L.pausedGroup : (L.weekdays?.[day] ?? day),
       clients: groups.get(day)!,
     }));
   };
@@ -109,7 +131,7 @@ export default function DashboardClient(props: Props) {
         <div className="flex items-baseline justify-between gap-2">
           <span className="truncate font-semibold text-gray-900">{c.name}</span>
           <span className="shrink-0 text-sm font-semibold text-gray-900">
-            {c.amountStr}<span className="font-normal text-gray-400">{c.periodStr}</span>
+            {c.amountStr}<span className="font-normal text-gray-500">{c.periodStr}</span>
           </span>
         </div>
         {(c.address || c.service) && (
@@ -124,7 +146,12 @@ export default function DashboardClient(props: Props) {
               <CalendarClock className="h-3 w-3" />{L.next} {c.nextServiceStr}
             </span>
           )}
-          <span className="text-xs text-gray-400">
+          {c.status === "paused" && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-800">
+              <PauseCircle className="h-3 w-3" />{c.pausedUntilStr ? `${L.pausedUntil} ${c.pausedUntilStr}` : L.status.paused}
+            </span>
+          )}
+          <span className="text-xs text-gray-500">
             {status === "quoted"
               ? `${L.sent} ${c.sentStr}`
               : c.scheduleStr
@@ -137,7 +164,7 @@ export default function DashboardClient(props: Props) {
   );
 
   return (
-    <main className="mx-auto max-w-3xl space-y-7 px-4 py-6 sm:px-6">
+    <main lang={props.lang} className="mx-auto max-w-3xl space-y-7 px-4 py-6 sm:px-6">
       {/* Header */}
       <header className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
@@ -154,17 +181,45 @@ export default function DashboardClient(props: Props) {
             {(["en", "es"] as Lang[]).map((lng) => (
               <form key={lng} action={setLanguage}>
                 <input type="hidden" name="lang" value={lng} />
-                <button className={`px-2.5 py-2 ${props.lang === lng ? "bg-brand text-white" : "bg-white text-gray-600"}`}>
+                <button
+                  disabled={props.lang === lng}
+                  aria-pressed={props.lang === lng}
+                  className={`${TAP} min-w-[44px] px-2.5 ${props.lang === lng ? "bg-brand text-white" : "bg-white text-gray-600 hover:bg-gray-50"}`}
+                >
                   {lng.toUpperCase()}
                 </button>
               </form>
             ))}
           </div>
           <form action={logout}>
-            <button className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-600 hover:bg-gray-100">{L.signOut}</button>
+            <SubmitIconButton title={L.signOut}>
+              <span className="hidden text-sm sm:inline">{L.signOut}</span>
+              <X className="h-4 w-4 sm:hidden" aria-hidden />
+            </SubmitIconButton>
           </form>
         </div>
       </header>
+
+      {/* Post-import success banner */}
+      {L.importedBanner && (
+        <div className="flex items-center gap-2 rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-medium text-green-800">
+          <Check className="h-4 w-4 shrink-0" />{L.importedBanner}
+        </div>
+      )}
+
+      {/* First-run onboarding — the call to action leads on an empty book */}
+      {props.clients.length === 0 && (
+        <Link href="/dashboard/import" className="block rounded-2xl border border-brand/30 bg-brand/5 p-4 shadow-sm transition hover:border-brand/50">
+          <div className="flex items-center gap-3">
+            <Upload className="h-6 w-6 shrink-0 text-brand-dark" />
+            <div className="min-w-0">
+              <p className="font-semibold text-brand-dark">{L.firstRunTitle}</p>
+              <p className="text-sm text-gray-600">{L.firstRunBody}</p>
+            </div>
+            <ChevronRight className="ml-auto h-5 w-5 shrink-0 text-brand-dark/50" />
+          </div>
+        </Link>
+      )}
 
       {/* Today hero */}
       {(() => {
@@ -175,7 +230,7 @@ export default function DashboardClient(props: Props) {
               <Sun className="h-6 w-6 shrink-0" />
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-bold uppercase tracking-wide leading-tight">{L.today}</p>
-                <p className="text-xs capitalize text-white/80">{props.today.dateStr}</p>
+                <p className="text-xs capitalize text-white/90">{props.today.dateStr}</p>
               </div>
               {count > 0 && (
                 <span className="shrink-0 rounded-full bg-white/20 px-2.5 py-1 text-sm font-bold tabular-nums">{count}</span>
@@ -193,7 +248,7 @@ export default function DashboardClient(props: Props) {
                       <Avatar name={s.name} />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate font-semibold text-gray-900">{s.name}</span>
-                        <span className="block truncate text-xs text-gray-400">{s.address || L.serviceDue}</span>
+                        <span className="block truncate text-xs text-gray-500">{s.address || L.serviceDue}</span>
                       </span>
                       <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${s.overdue ? "bg-red-100 text-red-700" : "bg-brand/10 text-brand-dark"}`}>
                         {s.overdue ? L.overdue : L.serviceDue}
@@ -207,7 +262,7 @@ export default function DashboardClient(props: Props) {
                       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100"><Bell className="h-4 w-4 text-amber-600" /></span>
                       <span className="min-w-0 flex-1">
                         <span className="block break-words font-semibold text-gray-900">{r.text}</span>
-                        {r.who && <span className="block truncate text-xs text-gray-400">{r.who}</span>}
+                        {r.who && <span className="block truncate text-xs text-gray-500">{r.who}</span>}
                       </span>
                       {r.overdue && <span className="shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">{L.overdue}</span>}
                     </button>
@@ -219,57 +274,57 @@ export default function DashboardClient(props: Props) {
         );
       })()}
 
-      {/* KPIs — 2x2 on mobile, 4 across on desktop */}
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat value={props.kpis.mrr} label={L.monthlyRecurring} Icon={TrendingUp} accent />
-        <Stat value={`${props.kpis.activeClients}`} label={L.activeClients} Icon={UserCheck} sub={props.kpis.scheduledThisWeek > 0 ? `${props.kpis.scheduledThisWeek} ${L.scheduledThisWeek.toLowerCase()}` : undefined} />
-        <Stat value={`${props.kpis.openQuotes}`} label={L.openQuotes} Icon={FileText} sub={props.kpis.potential ?? undefined} />
-        {props.kpis.outstanding ? (
-          <Stat value={props.kpis.outstanding} label={L.outstanding} Icon={AlertCircle} danger sub={`${props.kpis.remindersThisWeek} ${L.remindersThisWeek.toLowerCase()}`} />
-        ) : (
-          <Stat value={`${props.kpis.remindersThisWeek}`} label={L.remindersThisWeek} Icon={Bell} />
-        )}
-      </section>
-
-      {/* First-run onboarding — empty book -> import CTA */}
-      {props.clients.length === 0 && (
-        <Link href="/dashboard/import" className="block rounded-2xl border border-brand/30 bg-brand/5 p-4 shadow-sm transition hover:border-brand/50">
-          <div className="flex items-center gap-3">
-            <Upload className="h-6 w-6 shrink-0 text-brand-dark" />
-            <div className="min-w-0">
-              <p className="font-semibold text-brand-dark">{L.firstRunTitle}</p>
-              <p className="text-sm text-gray-600">{L.firstRunBody}</p>
-            </div>
-          </div>
-        </Link>
+      {/* KPIs — 2x2 on mobile, 4 across on desktop (hidden until the book has clients) */}
+      {props.clients.length > 0 && (
+        <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <Stat value={props.kpis.mrr} label={L.monthlyRecurring} Icon={TrendingUp} accent />
+          <Stat value={`${props.kpis.activeClients}`} label={L.activeClients} Icon={UserCheck} sub={props.kpis.scheduledThisWeek > 0 ? `${props.kpis.scheduledThisWeek} ${L.scheduledThisWeek.toLowerCase()}` : undefined} />
+          <Stat value={`${props.kpis.openQuotes}`} label={L.openQuotes} Icon={FileText} sub={props.kpis.potential ?? undefined} />
+          {props.kpis.outstanding ? (
+            <Stat value={props.kpis.outstanding} label={L.outstanding} Icon={AlertCircle} danger sub={`${props.kpis.remindersThisWeek} ${L.remindersThisWeek.toLowerCase()}`} />
+          ) : (
+            <Stat value={`${props.kpis.remindersThisWeek}`} label={L.remindersThisWeek} Icon={Bell} />
+          )}
+        </section>
       )}
 
       {/* Search + filter + import */}
       <section className="space-y-3">
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder={L.searchPlaceholder}
+              aria-label={L.searchPlaceholder}
               className={`w-full rounded-xl border border-gray-200 bg-white pl-9 pr-3 ${TAP} text-sm shadow-sm focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand`}
             />
           </div>
           <Link
             href="/dashboard/import"
             title={L.importClients}
-            className={`flex ${TAP} shrink-0 items-center gap-1.5 rounded-xl bg-brand px-3 text-sm font-medium text-white hover:bg-brand-dark`}
+            aria-label={L.importClients}
+            className={`flex ${TAP} min-w-[44px] shrink-0 items-center justify-center gap-1.5 rounded-xl bg-brand px-3 text-sm font-medium text-white hover:bg-brand-dark`}
           >
             <Upload className="h-4 w-4" /><span className="hidden sm:inline">{L.importClients}</span>
           </Link>
+          <a
+            href="/api/export"
+            title={L.exportCsv}
+            aria-label={L.exportCsv}
+            className={`flex ${TAP} min-w-[44px] shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white px-3 text-gray-600 hover:border-brand/40`}
+          >
+            <Download className="h-4 w-4" />
+          </a>
         </div>
         <div className="flex flex-wrap gap-2">
           {([["all", L.all], ["quoted", L.status.quoted], ["active", L.status.active]] as const).map(([key, lbl]) => (
             <button
               key={key}
-              onClick={() => setFilter(key as any)}
-              className={`rounded-full px-3 py-1.5 text-sm font-medium ${filter === key ? "bg-brand text-white" : "bg-white text-gray-600 ring-1 ring-gray-200"}`}
+              onClick={() => setFilter(key as "all" | ClientStatus)}
+              aria-pressed={filter === key}
+              className={`${TAP} rounded-full px-4 text-sm font-medium ${filter === key ? "bg-brand text-white" : "bg-white text-gray-600 ring-1 ring-gray-200 hover:bg-gray-50"}`}
             >
               {lbl}
             </button>
@@ -280,19 +335,22 @@ export default function DashboardClient(props: Props) {
       {/* Pipeline */}
       <section>
         <h2 className="mb-3 text-base font-bold text-gray-900">{L.pipeline}</h2>
+        {/* Active first — it's the daily driver; Quoted second (desktop keeps two columns). */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {(["quoted", "active"] as ("quoted" | "active")[]).map((status) => {
-            const group = filtered.filter((c) => c.status === status);
+          {(["active", "quoted"] as ("quoted" | "active")[]).map((status) => {
+            const group = status === "active"
+              ? filtered.filter((c) => c.status === "active" || c.status === "paused")
+              : filtered.filter((c) => c.status === status);
             const tint = COLUMN_TINT[status];
             return (
               <div key={status} className={`rounded-2xl border p-3 ${tint.panel}`}>
                 <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-700">
                   <span className={`rounded-full px-2 py-0.5 text-xs ${tint.chip}`}>{L.status[status]}</span>
-                  <span className="text-gray-400">({group.length})</span>
+                  <span className="text-gray-500">({group.length})</span>
                 </div>
-                <div className="max-h-[28rem] space-y-2 overflow-y-auto pr-0.5">
+                <div className="space-y-2 pr-0.5 sm:max-h-[28rem] sm:overflow-y-auto sm:overscroll-contain">
                   {group.length === 0 ? (
-                    <p className="rounded-xl border border-dashed border-gray-300/70 bg-white/40 px-3 py-4 text-sm text-gray-400">
+                    <p className="rounded-xl border border-dashed border-gray-300/70 bg-white/40 px-3 py-4 text-sm text-gray-500">
                       {query || filter !== "all" ? L.noMatches : status === "quoted" ? L.noOpenQuotes : L.noActiveClients}
                     </p>
                   ) : status === "active" ? (
@@ -303,7 +361,7 @@ export default function DashboardClient(props: Props) {
                           <span className="h-px flex-1 bg-green-200/70" />
                           <span className="text-xs text-green-700/70">{clients.length}</span>
                         </div>
-                        {clients.map((c) => clientCard(c, "active"))}
+                        {clients.map((c) => clientCard(c, c.status))}
                       </div>
                     ))
                   ) : (
@@ -330,7 +388,7 @@ export default function DashboardClient(props: Props) {
                   disabled={!u.clientId}
                   className="flex w-full items-start gap-3 rounded-xl border border-gray-100 bg-white p-3 text-left shadow-sm enabled:hover:border-brand/40"
                 >
-                  {u.type === "quote" ? <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" /> : <Bell className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />}
+                  {u.type === "quote" ? <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-gray-500" /> : <Bell className="mt-0.5 h-4 w-4 shrink-0 text-gray-500" />}
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline justify-between gap-2">
                       <span className="truncate font-medium text-gray-900">{u.title}</span>
@@ -338,7 +396,7 @@ export default function DashboardClient(props: Props) {
                     </div>
                     <div className="mt-0.5 text-sm text-gray-500">
                       {u.sub}
-                      {u.moreDates.length > 0 && <span className="ml-1 text-gray-400">· {u.moreDates.join(" · ")}</span>}
+                      {u.moreDates.length > 0 && <span className="ml-1 text-gray-500">· {u.moreDates.join(" · ")}</span>}
                     </div>
                   </div>
                 </button>
@@ -353,7 +411,7 @@ export default function DashboardClient(props: Props) {
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-base font-bold text-gray-900">{L.recentActivity}</h2>
           {props.activity.length > 6 && (
-            <button onClick={() => setShowAllActivity((v) => !v)} className="text-sm font-medium text-brand-dark">
+            <button onClick={() => setShowAllActivity((v) => !v)} className={`${TAP} px-2 text-sm font-medium text-brand-dark`}>
               {showAllActivity ? L.seeLess : L.seeAll}
             </button>
           )}
@@ -366,10 +424,10 @@ export default function DashboardClient(props: Props) {
               const Icon = ACTIVITY_ICON[a.kind] ?? MessageCircle;
               return (
                 <div key={a.id} className="flex items-start gap-3 px-3 py-2.5">
-                  <Icon className="mt-0.5 h-4 w-4 shrink-0 text-gray-400" />
+                  <Icon className="mt-0.5 h-4 w-4 shrink-0 text-gray-500" />
                   <div className="flex min-w-0 flex-1 items-baseline justify-between gap-2">
                     <span className="break-words text-sm text-gray-700">{a.text}</span>
-                    <span className="shrink-0 text-xs text-gray-400" title={a.exact}>{a.rel}</span>
+                    <span className="shrink-0 text-xs text-gray-500" title={a.exact}>{a.rel}</span>
                   </div>
                 </div>
               );
@@ -408,11 +466,23 @@ function ClientDetail({
 }: {
   client: ClientView; labels: Record<string, any>; jobs: JobView[]; payments: PayView[]; reminders: RemView[]; onClose: () => void;
 }) {
+  // Drawer manners: Escape closes, the page behind stops scrolling.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 z-50">
+    <div className="fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label={client.name}>
       <button aria-label={L.close} onClick={onClose} className="absolute inset-0 bg-black/30" />
-      <div className="absolute inset-y-0 right-0 flex w-full max-w-md flex-col overflow-y-auto bg-gray-50 shadow-xl">
-        <div className="sticky top-0 flex items-center justify-between gap-3 border-b border-gray-200 bg-white px-4 py-3">
+      <div className="absolute inset-y-0 right-0 flex w-full max-w-md flex-col overflow-y-auto overscroll-contain bg-gray-50 shadow-xl">
+        <div className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-gray-200 bg-white px-4 py-3">
           <div className="flex min-w-0 items-center gap-3">
             <Avatar name={client.name} />
             <div className="min-w-0">
@@ -420,23 +490,33 @@ function ClientDetail({
               <span className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLOR[client.status]}`}>{L.status[client.status]}</span>
             </div>
           </div>
-          <button onClick={onClose} className="shrink-0 rounded-lg p-2 text-gray-500 hover:bg-gray-100"><X className="h-5 w-5" /></button>
+          <button autoFocus onClick={onClose} aria-label={L.close} className={`${TAP} min-w-[44px] shrink-0 rounded-lg p-2 text-gray-500 hover:bg-gray-100`}><X className="mx-auto h-5 w-5" /></button>
         </div>
 
         <div className="space-y-5 p-4">
           {/* Facts */}
           <dl className="space-y-2 rounded-xl border border-gray-100 bg-white p-4 text-sm shadow-sm">
             <Fact label={L.address} value={client.address || "—"} />
+            {client.phone && (
+              <div className="flex items-start justify-between gap-3">
+                <dt className="text-gray-500">{L.phoneLabel}</dt>
+                <dd className="text-right font-medium">
+                  <a href={`tel:${client.phone}`} className="inline-flex items-center gap-1 text-brand-dark underline"><Phone className="h-3.5 w-3.5" />{client.phone}</a>
+                </dd>
+              </div>
+            )}
+            {client.email && <Fact label={L.emailLabel} value={client.email} />}
             <Fact label={L.amount} value={client.amountStr === "—" ? "—" : `${client.amountStr}${client.periodStr}`} />
             <Fact label={L.service} value={client.service || "—"} />
             {client.scheduleStr && <Fact label={L.schedule} value={client.scheduleStr} />}
             {client.nextServiceStr && <Fact label={L.nextService} value={client.nextServiceStr} />}
+            {client.pausedUntilStr && <Fact label={L.pausedUntil} value={client.pausedUntilStr} />}
           </dl>
 
           {/* Quick actions */}
           <div className="grid grid-cols-2 gap-2">
             <ActionBtn action={markStatus} fields={{ clientId: client.id, status: "active" }} label={L.markAccepted} primary />
-            <ActionBtn action={markStatus} fields={{ clientId: client.id, status: "lost" }} label={L.markDeclined} />
+            <ActionBtn action={markStatus} fields={{ clientId: client.id, status: "lost" }} label={L.markDeclined} confirmText={L.confirmDecline} />
           </div>
 
           {/* Add note / reminder / payment */}
@@ -453,13 +533,13 @@ function ClientDetail({
 
           {/* Reminders w/ actions */}
           <Group title={L.reminders}>
-            {reminders.length === 0 ? <p className="text-sm text-gray-400">{L.none}</p> : reminders.map((r) => (
+            {reminders.length === 0 ? <p className="text-sm text-gray-500">{L.none}</p> : reminders.map((r) => (
               <div key={r.id} className="flex items-start justify-between gap-2 border-b border-gray-50 py-2 last:border-0">
                 <div className="min-w-0">
                   <p className="break-words text-sm text-gray-700">{r.text}</p>
-                  <p className="text-xs text-gray-400">{r.dateStr}</p>
+                  <p className="text-xs text-gray-500">{r.dateStr}</p>
                 </div>
-                <div className="flex shrink-0 gap-1">
+                <div className="flex shrink-0 gap-2">
                   <ReminderBtn id={r.id} action="snooze" title={L.snooze}><Clock className="h-4 w-4" /></ReminderBtn>
                   <ReminderBtn id={r.id} action="done" title={L.done}><Check className="h-4 w-4" /></ReminderBtn>
                   <ReminderBtn id={r.id} action="cancel" title={L.cancel}><Ban className="h-4 w-4" /></ReminderBtn>
@@ -470,12 +550,12 @@ function ClientDetail({
 
           {/* Jobs */}
           <Group title={L.jobs}>
-            {jobs.length === 0 ? <p className="text-sm text-gray-400">{L.none}</p> : jobs.map((j) => <Row key={j.id} left={j.description} right={j.dateStr} />)}
+            {jobs.length === 0 ? <p className="text-sm text-gray-500">{L.none}</p> : jobs.map((j) => <Row key={j.id} left={j.description} right={j.dateStr} />)}
           </Group>
 
           {/* Payments */}
           <Group title={L.payments}>
-            {payments.length === 0 ? <p className="text-sm text-gray-400">{L.none}</p> : payments.map((p) => (
+            {payments.length === 0 ? <p className="text-sm text-gray-500">{L.none}</p> : payments.map((p) => (
               <Row
                 key={p.id}
                 left={p.amountStr}
@@ -492,10 +572,10 @@ function ClientDetail({
 
 function Stat({ value, label, sub, accent, danger, Icon }: { value: string; label: string; sub?: string; accent?: boolean; danger?: boolean; Icon?: typeof FileText }) {
   const tone = accent
-    ? { card: "border-brand bg-brand", val: "text-white", lab: "text-white/80", sub: "text-white/70", icon: "text-white/70" }
+    ? { card: "border-brand bg-brand", val: "text-white", lab: "text-white/90", sub: "text-white/90", icon: "text-white/70" }
     : danger
-    ? { card: "border-red-200 bg-white", val: "text-red-700", lab: "text-gray-500", sub: "text-gray-400", icon: "text-red-500" }
-    : { card: "border-gray-100 bg-white", val: "text-gray-900", lab: "text-gray-500", sub: "text-gray-400", icon: "text-brand" };
+    ? { card: "border-red-200 bg-white", val: "text-red-700", lab: "text-gray-500", sub: "text-gray-500", icon: "text-red-500" }
+    : { card: "border-gray-100 bg-white", val: "text-gray-900", lab: "text-gray-500", sub: "text-gray-500", icon: "text-brand" };
   return (
     <div className={`rounded-2xl border p-4 shadow-sm ${tone.card}`}>
       <div className="flex items-start justify-between gap-2">
@@ -509,10 +589,31 @@ function Stat({ value, label, sub, accent, danger, Icon }: { value: string; labe
 }
 function Avatar({ name }: { name: string }) {
   const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) | 0;
+  const hue = AVATAR_HUES[Math.abs(hash) % AVATAR_HUES.length];
   return (
-    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand/10 text-xs font-bold text-brand-dark">
+    <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold ${hue}`}>
       {initials}
     </span>
+  );
+}
+/** Submit button that shows a spinner + disables while its form's server action runs. */
+function Pending({ children }: { children: React.ReactNode }) {
+  const { pending } = useFormStatus();
+  return pending ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : <>{children}</>;
+}
+function SubmitIconButton({ title, children }: { title: string; children: React.ReactNode }) {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      disabled={pending}
+      title={title}
+      aria-label={title}
+      className={`flex ${TAP} min-w-[44px] items-center justify-center gap-1.5 rounded-lg border border-gray-300 px-3 text-gray-600 hover:bg-gray-100 disabled:opacity-60`}
+    >
+      {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : children}
+    </button>
   );
 }
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
@@ -526,7 +627,7 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
 function Group({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">{title}</h4>
+      <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">{title}</h4>
       <div className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm">{children}</div>
     </div>
   );
@@ -534,7 +635,7 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
 function Fact({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-start justify-between gap-3">
-      <dt className="text-gray-400">{label}</dt>
+      <dt className="text-gray-500">{label}</dt>
       <dd className="text-right font-medium text-gray-800">{value}</dd>
     </div>
   );
@@ -544,26 +645,35 @@ function Row({ left, right, sub }: { left: string; right: string; sub?: string |
     <div className="flex items-start justify-between gap-2 border-b border-gray-50 pb-2 last:border-0 last:pb-0">
       <div className="min-w-0">
         <div className="break-words text-sm text-gray-800">{left}</div>
-        {sub && <div className="text-xs text-gray-400">{sub}</div>}
+        {sub && <div className="text-xs text-gray-500">{sub}</div>}
       </div>
       <div className="shrink-0 text-xs text-gray-500">{right}</div>
     </div>
   );
 }
 function Empty({ children }: { children: React.ReactNode }) {
-  return <p className="text-sm text-gray-400">{children}</p>;
+  return <p className="text-sm text-gray-500">{children}</p>;
 }
 function EmptyCard({ children }: { children: React.ReactNode }) {
-  return <div className="rounded-xl border border-dashed border-gray-200 bg-white px-4 py-6 text-center text-sm text-gray-400">{children}</div>;
+  return <div className="rounded-xl border border-dashed border-gray-200 bg-white px-4 py-6 text-center text-sm text-gray-500">{children}</div>;
 }
-function ActionBtn({ action, fields, label, primary }: { action: (fd: FormData) => void; fields: Record<string, string>; label: string; primary?: boolean }) {
+function ActionBtn({ action, fields, label, primary, confirmText }: { action: (fd: FormData) => void; fields: Record<string, string>; label: string; primary?: boolean; confirmText?: string }) {
   return (
-    <form action={action}>
+    <form
+      action={action}
+      onSubmit={(e) => { if (confirmText && !window.confirm(confirmText)) e.preventDefault(); }}
+    >
       {Object.entries(fields).map(([k, v]) => <input key={k} type="hidden" name={k} value={v} />)}
-      <button className={`w-full rounded-lg px-3 ${TAP} text-sm font-medium ${primary ? "bg-brand text-white hover:bg-brand-dark" : "border border-gray-300 text-gray-700 hover:bg-gray-100"}`}>
-        {label}
-      </button>
+      <ActionSubmit label={label} primary={primary} />
     </form>
+  );
+}
+function ActionSubmit({ label, primary }: { label: string; primary?: boolean }) {
+  const { pending } = useFormStatus();
+  return (
+    <button disabled={pending} className={`w-full rounded-lg px-3 ${TAP} text-sm font-medium disabled:opacity-60 ${primary ? "bg-brand text-white hover:bg-brand-dark" : "border border-gray-300 text-gray-700 hover:bg-gray-100"}`}>
+      <Pending>{label}</Pending>
+    </button>
   );
 }
 function MiniForm({ action, clientId, name, placeholder, button, numeric }: { action: (fd: FormData) => void; clientId: string; name: string; placeholder: string; button: string; numeric?: boolean }) {
@@ -572,12 +682,21 @@ function MiniForm({ action, clientId, name, placeholder, button, numeric }: { ac
       <input type="hidden" name="clientId" value={clientId} />
       <input
         name={name}
+        aria-label={placeholder}
         inputMode={numeric ? "decimal" : "text"}
         placeholder={placeholder}
         className={`flex-1 rounded-lg border border-gray-200 px-3 ${TAP} text-sm focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand`}
       />
-      <button className={`shrink-0 rounded-lg bg-brand px-3 ${TAP} text-sm font-medium text-white hover:bg-brand-dark`}>{button}</button>
+      <MiniSubmit label={button} />
     </form>
+  );
+}
+function MiniSubmit({ label }: { label: string }) {
+  const { pending } = useFormStatus();
+  return (
+    <button disabled={pending} className={`shrink-0 rounded-lg bg-brand px-3 ${TAP} min-w-[44px] text-sm font-medium text-white hover:bg-brand-dark disabled:opacity-60`}>
+      <Pending>{label}</Pending>
+    </button>
   );
 }
 function ReminderBtn({ id, action, title, children }: { id: string; action: string; title: string; children: React.ReactNode }) {
@@ -585,7 +704,15 @@ function ReminderBtn({ id, action, title, children }: { id: string; action: stri
     <form action={reminderAction}>
       <input type="hidden" name="reminderId" value={id} />
       <input type="hidden" name="action" value={action} />
-      <button title={title} className="rounded-lg border border-gray-200 p-2 text-gray-500 hover:bg-gray-100">{children}</button>
+      <ReminderSubmit title={title}>{children}</ReminderSubmit>
     </form>
+  );
+}
+function ReminderSubmit({ title, children }: { title: string; children: React.ReactNode }) {
+  const { pending } = useFormStatus();
+  return (
+    <button disabled={pending} title={title} aria-label={title} className={`${TAP} min-w-[44px] rounded-lg border border-gray-200 p-2 text-gray-500 hover:bg-gray-100 disabled:opacity-60`}>
+      {pending ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : children}
+    </button>
   );
 }

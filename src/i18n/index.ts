@@ -52,7 +52,7 @@ const en = {
   noJobs: "No jobs logged yet — text the number to add one.",
   noPayments: 'No payments yet — text e.g. "collected $200 from Angela" to log one.',
   // statuses
-  status: { quoted: "Quoted", active: "Active", completed: "Completed", lost: "Lost" } as Record<ClientStatus, string>,
+  status: { quoted: "Quoted", active: "Active", completed: "Completed", lost: "Lost", paused: "Paused" } as Record<ClientStatus, string>,
   // client detail
   details: "Details",
   close: "Close",
@@ -109,15 +109,23 @@ const en = {
   allClearToday: "You're all caught up for today.",
   serviceDue: "Service due",
   unscheduled: "No day set",
+  exportCsv: "Download CSV",
+  phoneLabel: "Phone",
+  emailLabel: "Email",
+  pausedUntil: "Paused until",
+  pausedGroup: "Paused",
+  confirmDecline: "Mark this client declined? They'll come off your list.",
+  genericError: "Something went wrong — try again.",
+  importedBanner: "Imported {n} client(s) ✅",
 };
 
 const es: Dict = {
   signOut: "Cerrar sesión",
   remindersTextYou: (phone: string) => `Los recordatorios te llegan por mensaje al ${phone}`,
-  monthlyRecurring: "Ingreso mensual recurrente",
+  monthlyRecurring: "Ingreso mensual",
   openQuotes: "Cotizaciones abiertas",
   potential: (v: string) => `${v}/mes potencial`,
-  remindersThisWeek: "Recordatorios esta semana",
+  remindersThisWeek: "Recordatorios",
   activeClients: "Clientes activos",
   outstanding: "Por cobrar",
   scheduledThisWeek: "Agendados esta semana",
@@ -149,7 +157,7 @@ const es: Dict = {
   noActivity: "Sin actividad aún — envía un mensaje al número para registrar tu primera cotización.",
   noJobs: "Aún no hay trabajos — envía un mensaje al número para agregar uno.",
   noPayments: 'Aún no hay pagos — envía p. ej. "cobré $200 a Angela" para registrar uno.',
-  status: { quoted: "Cotizado", active: "Activo", completed: "Completado", lost: "Perdido" },
+  status: { quoted: "Cotizado", active: "Activo", completed: "Completado", lost: "Perdido", paused: "Pausado" },
   details: "Detalles",
   close: "Cerrar",
   contact: "Contacto",
@@ -204,6 +212,14 @@ const es: Dict = {
   allClearToday: "Estás al día por hoy.",
   serviceDue: "Servicio pendiente",
   unscheduled: "Sin día",
+  exportCsv: "Descargar CSV",
+  phoneLabel: "Teléfono",
+  emailLabel: "Correo",
+  pausedUntil: "Pausado hasta",
+  pausedGroup: "Pausados",
+  confirmDecline: "¿Marcar este cliente como rechazado? Saldrá de tu lista.",
+  genericError: "Algo salió mal — intenta de nuevo.",
+  importedBanner: "Importé {n} cliente(s) ✅",
 };
 
 const DICTS: Record<Lang, Dict> = { en, es };

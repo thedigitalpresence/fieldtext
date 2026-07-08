@@ -2,10 +2,12 @@ import { db, getBusiness, getPrimaryPhone } from "@/lib/supabase";
 import { dict } from "@/i18n";
 import { businessLang, money, periodLabel } from "@/lib/templates";
 import { monthlyEquivalent } from "@/lib/intents";
+import { totalOutstanding } from "@/lib/charges";
 import DashboardClient from "./DashboardClient";
 import type { Client, Job, Payment, Reminder, Message, Lang } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "Dashboard" };
 
 function fmtShort(d: string | null, lang: Lang): string {
   if (!d) return "—";
@@ -58,8 +60,9 @@ function activityText(m: Message, lang: Lang): string {
   }
 }
 
-export default async function DashboardPage() {
+export default async function DashboardPage({ searchParams }: { searchParams?: { imported?: string } }) {
   const business = await getBusiness();
+  const importedCount = Number(searchParams?.imported ?? 0) || 0;
   const bid = business.id;
   const lang = businessLang(business);
   const d = dict(lang);
@@ -87,7 +90,8 @@ export default async function DashboardPage() {
   const potential = quoted.reduce((s, c) => s + monthlyEquivalent(c), 0);
   const weekEnd = Date.now() + 7 * 86400000;
   const remindersThisWeek = reminders.filter((r) => new Date(r.due_at).getTime() <= weekEnd).length;
-  const outstanding = payments.filter((p) => p.status === "unpaid" || p.status === "overdue").reduce((s, p) => s + Number(p.amount), 0);
+  // Outstanding now comes from the receivables ledger (charges), not manual "owes" rows.
+  const outstanding = await totalOutstanding(bid);
   const scheduledThisWeek = active.filter((c) => c.next_service_on && new Date(c.next_service_on + "T00:00:00").getTime() <= weekEnd).length;
 
   // ── Today focus strip: services + reminders due today (or overdue) ──────────
@@ -123,7 +127,7 @@ export default async function DashboardPage() {
 
   // ── Display-ready props (no functions cross the client boundary) ────────────
   const clientViews = clients
-    .filter((c) => c.status === "quoted" || c.status === "active")
+    .filter((c) => c.status === "quoted" || c.status === "active" || c.status === "paused")
     .map((c) => {
       const next = quoteSeq.get(c.id)?.[0]?.due_at ?? null;
       const interval = c.service_interval
@@ -134,31 +138,40 @@ export default async function DashboardPage() {
         amountStr: c.amount != null ? money(c.amount) : "—",
         periodStr: periodLabel(c.billing_period, lang),
         service: c.service_description, notes: c.notes,
-        sentStr: fmtShort(c.created_at, lang), sinceStr: fmtShort(c.updated_at, lang),
+        phone: c.phone ?? null, email: c.email ?? null,
+        // "Client since" = when they entered the book, not the last edit.
+        sentStr: fmtShort(c.created_at, lang), sinceStr: fmtShort(c.created_at, lang),
         nextStr: next ? fmtShort(next, lang) : null,
         // black book: recurring service schedule
         scheduleStr: interval ? [interval, c.service_day ? c.service_day.charAt(0).toUpperCase() + c.service_day.slice(1) : ""].filter(Boolean).join(" · ") : null,
         nextServiceStr: c.next_service_on ? fmtShort(c.next_service_on, lang) : null,
         serviceDay: c.service_day ?? null,
+        pausedUntilStr: c.paused_until ? fmtShort(c.paused_until, lang) : null,
       };
     });
 
+  // Reminders due today/overdue live in the Today hero — Upcoming shows only the future.
+  const isFuture = (iso: string) => new Date(iso).toLocaleDateString("en-CA", { timeZone: tz }) > todayStr;
   const upcoming = [
-    ...Array.from(quoteSeq.entries()).map(([cid, seq]) => {
-      const c = clients.find((x) => x.id === cid);
-      return {
-        id: `q-${cid}`, type: "quote" as const, sort: new Date(seq[0].due_at).getTime(), clientId: cid,
-        title: d.followUpWith(c?.name ?? "client"),
-        sub: c ? `${c.amount != null ? money(c.amount) + periodLabel(c.billing_period, lang) + " " : ""}${d.quoteWord}` : d.openQuote,
-        dateStr: fmtShort(seq[0].due_at, lang), dateExact: fmtExact(seq[0].due_at, lang),
-        moreDates: seq.slice(1).map((r) => fmtShort(r.due_at, lang)),
-      };
-    }),
-    ...manual.map((r) => ({
-      id: `m-${r.id}`, type: "manual" as const, sort: new Date(r.due_at).getTime(), clientId: r.client_id,
-      title: r.text, sub: r.client_id ? nameOf(r.client_id) : "", dateStr: fmtShort(r.due_at, lang), dateExact: fmtExact(r.due_at, lang),
-      moreDates: [] as string[],
-    })),
+    ...Array.from(quoteSeq.entries())
+      .filter(([, seq]) => isFuture(seq[0].due_at))
+      .map(([cid, seq]) => {
+        const c = clients.find((x) => x.id === cid);
+        return {
+          id: `q-${cid}`, type: "quote" as const, sort: new Date(seq[0].due_at).getTime(), clientId: cid,
+          title: d.followUpWith(c?.name ?? "client"),
+          sub: c ? `${c.amount != null ? money(c.amount) + periodLabel(c.billing_period, lang) + " " : ""}${d.quoteWord}` : d.openQuote,
+          dateStr: fmtShort(seq[0].due_at, lang), dateExact: fmtExact(seq[0].due_at, lang),
+          moreDates: seq.slice(1).map((r) => fmtShort(r.due_at, lang)),
+        };
+      }),
+    ...manual
+      .filter((r) => isFuture(r.due_at))
+      .map((r) => ({
+        id: `m-${r.id}`, type: "manual" as const, sort: new Date(r.due_at).getTime(), clientId: r.client_id,
+        title: r.text, sub: r.client_id ? nameOf(r.client_id) : "", dateStr: fmtShort(r.due_at, lang), dateExact: fmtExact(r.due_at, lang),
+        moreDates: [] as string[],
+      })),
   ].sort((a, b) => a.sort - b.sort);
 
   const activity = messages.map((m) => ({
@@ -195,7 +208,9 @@ export default async function DashboardPage() {
     importClients: d.importClients, firstRunTitle: d.firstRunTitle, firstRunBody: d.firstRunBody,
     today: d.today, allClearToday: d.allClearToday, serviceDue: d.serviceDue,
     unscheduled: d.unscheduled, weekdays,
-    moreDatesOne: d.moreDates(1).replace(/\d+\s*/, ""), // "more date"/"fecha más" suffix
+    exportCsv: d.exportCsv, phoneLabel: d.phoneLabel, emailLabel: d.emailLabel,
+    pausedUntil: d.pausedUntil, pausedGroup: d.pausedGroup, confirmDecline: d.confirmDecline,
+    importedBanner: importedCount > 0 ? d.importedBanner.replace("{n}", String(importedCount)) : "",
   };
 
   return (

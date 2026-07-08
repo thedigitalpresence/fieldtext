@@ -4,6 +4,7 @@ import { dict } from "@/i18n";
 import ImportClient from "./ImportClient";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "Import clients" };
 
 export default async function ImportPage() {
   const business = await getBusiness();
@@ -15,6 +16,7 @@ export default async function ImportPage() {
     reviewTitle: d.reviewTitle, emptyDrafts: d.emptyDrafts, saveClients: d.saveClients, saving: d.saving,
     savedClients: d.savedClients, addRow: d.addRow, remove: d.remove, backDash: d.backDash,
     colName: d.colName, colAddress: d.colAddress, colAmount: d.colAmount, colPeriod: d.colPeriod, colService: d.colService,
+    genericError: d.genericError,
   };
   return <ImportClient labels={labels} />;
 }

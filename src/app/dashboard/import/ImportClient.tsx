@@ -5,20 +5,29 @@ import { useRouter } from "next/navigation";
 import { ClipboardList, FileSpreadsheet, Camera, Trash2, Plus, Loader2 } from "lucide-react";
 
 type Method = "text" | "csv" | "photo";
+// amount kept as a STRING in the editor so "300/mo" or a half-typed value never
+// renders NaN; parsed to a number only on save.
 type Draft = {
-  name: string; address?: string; amount?: number; billing_period?: string;
+  name: string; address?: string; amount?: string; billing_period?: string;
   service_description?: string; service_interval?: string; service_day?: string;
 };
 const PERIODS = ["", "monthly", "weekly", "biweekly", "one_time"];
+const parseAmount = (s?: string): number | undefined => {
+  if (!s) return undefined;
+  const n = Number(String(s).replace(/[^0-9.]/g, ""));
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+};
 
 export default function ImportClient({ labels: L }: { labels: Record<string, string> }) {
   const router = useRouter();
-  const [method, setMethod] = useState<Method>("text");
+  const [method, setMethodRaw] = useState<Method>("text");
   const [text, setText] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [drafts, setDrafts] = useState<Draft[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // Switching tabs clears the picked file — a CSV must never be submitted as a "photo".
+  const setMethod = (m: Method) => { setMethodRaw(m); setFile(null); setError(""); };
 
   async function review() {
     setBusy(true); setError("");
@@ -30,23 +39,32 @@ export default function ImportClient({ labels: L }: { labels: Record<string, str
       const res = await fetch("/api/import/parse", { method: "POST", body: fd });
       const json = await res.json();
       if (json.error === "photo_needs_key") { setError(L.photoNeedsKey); return; }
-      if (json.error) { setError("Something went wrong reading that."); return; }
-      setDrafts(json.drafts ?? []);
-    } catch { setError("Something went wrong reading that."); }
+      if (json.error) { setError(L.genericError); return; }
+      setDrafts((json.drafts ?? []).map((d: Record<string, unknown>) => ({ ...d, amount: d.amount != null ? String(d.amount) : undefined })));
+    } catch { setError(L.genericError); }
     finally { setBusy(false); }
   }
 
   async function save() {
     if (!drafts) return;
-    setBusy(true);
+    setBusy(true); setError("");
     try {
+      const payload = drafts
+        .filter((d) => d.name.trim())
+        .map((d) => ({ ...d, amount: parseAmount(d.amount) }));
       const res = await fetch("/api/import/commit", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ drafts: drafts.filter((d) => d.name.trim()) }),
+        body: JSON.stringify({ drafts: payload }),
       });
       const json = await res.json();
-      if (typeof json.count === "number") { router.push("/dashboard"); router.refresh(); }
-    } finally { setBusy(false); }
+      if (typeof json.count === "number") {
+        router.push(`/dashboard?imported=${json.count}`);
+        router.refresh();
+      } else {
+        setError(L.genericError);
+      }
+    } catch { setError(L.genericError); }
+    finally { setBusy(false); }
   }
 
   const update = (i: number, patch: Partial<Draft>) =>
@@ -67,7 +85,8 @@ export default function ImportClient({ labels: L }: { labels: Record<string, str
             {([["text", ClipboardList, L.mPaste], ["csv", FileSpreadsheet, L.mCsv], ["photo", Camera, L.mPhoto]] as const).map(([m, Icon, lbl]) => (
               <button
                 key={m}
-                onClick={() => { setMethod(m as Method); setError(""); }}
+                onClick={() => setMethod(m as Method)}
+                aria-pressed={method === m}
                 className={`flex min-h-[44px] flex-col items-center gap-1 rounded-xl border p-3 text-sm font-medium ${method === m ? "border-brand bg-brand/5 text-brand-dark" : "border-gray-200 bg-white text-gray-600"}`}
               >
                 <Icon className="h-5 w-5" />{lbl}
@@ -121,12 +140,12 @@ export default function ImportClient({ labels: L }: { labels: Record<string, str
                     <div className="flex items-center gap-2">
                       <input value={d.name} onChange={(e) => update(i, { name: e.target.value })} placeholder={L.colName}
                         className="flex-1 rounded-lg border border-gray-200 px-2 py-1.5 text-sm font-medium focus:border-brand focus:outline-none" />
-                      <button onClick={() => removeRow(i)} title={L.remove} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+                      <button onClick={() => removeRow(i)} title={L.remove} aria-label={L.remove} className="min-h-[44px] min-w-[44px] rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-red-600"><Trash2 className="mx-auto h-4 w-4" /></button>
                     </div>
                     <input value={d.address ?? ""} onChange={(e) => update(i, { address: e.target.value })} placeholder={L.colAddress}
                       className="mt-2 w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm text-gray-600 focus:border-brand focus:outline-none" />
                     <div className="mt-2 flex gap-2">
-                      <input inputMode="decimal" value={d.amount ?? ""} onChange={(e) => update(i, { amount: e.target.value === "" ? undefined : Number(e.target.value) })} placeholder={L.colAmount}
+                      <input inputMode="decimal" value={d.amount ?? ""} onChange={(e) => update(i, { amount: e.target.value || undefined })} placeholder={L.colAmount} aria-label={L.colAmount}
                         className="w-24 rounded-lg border border-gray-200 px-2 py-1.5 text-sm focus:border-brand focus:outline-none" />
                       <select value={d.billing_period ?? ""} onChange={(e) => update(i, { billing_period: e.target.value || undefined })}
                         className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm text-gray-600 focus:border-brand focus:outline-none">
@@ -138,7 +157,7 @@ export default function ImportClient({ labels: L }: { labels: Record<string, str
                   </div>
                 ))}
               </div>
-              <button onClick={addRow} className="mt-2 text-sm font-medium text-brand-dark">{L.addRow}</button>
+              <button onClick={addRow} className="mt-2 min-h-[44px] px-2 text-sm font-medium text-brand-dark">{L.addRow}</button>
             </>
           )}
 

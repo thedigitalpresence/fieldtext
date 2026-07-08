@@ -128,5 +128,5 @@ export async function updateClient(id: string, patch: Partial<Client>): Promise<
 }
 
 export function statusLabel(s: ClientStatus): string {
-  return { quoted: "Quoted", active: "Active", completed: "Completed", lost: "Lost" }[s];
+  return { quoted: "Quoted", active: "Active", completed: "Completed", lost: "Lost", paused: "Paused" }[s];
 }
