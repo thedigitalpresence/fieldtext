@@ -132,6 +132,7 @@ function systemPrompt(ctx: ParseContext): string {
     `- One-off future work with a price ("mulch at the smiths next tuesday $450") = log_job with scheduled_on + amount.`,
     `- If they paid by a method ("bob venmoed 300", "paid cash") set payment_method.`,
     `- Requests you have no intent for (delete a record, edit an old job): set needs_clarification saying what to do instead — never force the nearest intent.`,
+    `- A bare "no", "fix", "wrong", or "that's not right" (the owner rejecting the last confirmation) = correction intent with correction_text set to their message. NEVER answer these with needs_clarification.`,
     `If a required field is missing or a client is ambiguous, set needs_clarification with ONE short question instead of guessing. If confidence is low, ask rather than write.`,
   ].join("\n");
 }
@@ -228,8 +229,8 @@ function parseClause(text: string, _ctx: ParseContext): Record<string, any> | nu
   const lower = t.toLowerCase();
   if (!t) return null;
 
-  // Correction
-  if (/^(no[, ]|actually\b|change\b|it'?s .* not |no es|corrige|cambia\b|en realidad|fix\b)/i.test(lower)) {
+  // Correction — including a bare "no"/"fix" rejecting the last confirmation
+  if (/^(no|fix|wrong|mal)[.!]?$/i.test(lower) || /^(no[, ]|actually\b|change\b|it'?s .* not |no es|corrige|cambia\b|en realidad|fix\b)/i.test(lower)) {
     return { intent: "correction", confidence: 0.6, correction_text: t };
   }
 
