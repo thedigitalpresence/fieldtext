@@ -175,9 +175,9 @@ export async function resolvePending(
       const client = await createClient(business.id, {
         name: p.client_name ?? "New client",
         address: p.address,
-        status: p.intent === "log_quote" ? "quoted" : "active",
+        status: p.intent === "log_quote" ? (p.status === "active" ? "active" : "quoted") : "active",
       });
-      const action: ParsedAction = { ...p, client_id: client.id };
+      const action: ParsedAction = { ...p, client_id: client.id, client_is_new: true };
       return runAction(business, action, ctx, null, session, lang, a);
     }
     return null; // unrelated text — parse normally
@@ -189,9 +189,9 @@ export async function resolvePending(
       const client = await createClient(business.id, {
         name: p.client_name ?? "New client",
         address: p.address,
-        status: p.intent === "log_quote" ? "quoted" : "active",
+        status: p.intent === "log_quote" ? (p.status === "active" ? "active" : "quoted") : "active",
       });
-      const action: ParsedAction = { ...p, client_id: client.id };
+      const action: ParsedAction = { ...p, client_id: client.id, client_is_new: true };
       return runAction(business, action, ctx, null, session, lang, a);
     }
     if (/^\s*(no|nah|nope)\s*[.!]?\s*$/i.test(a)) {
@@ -205,6 +205,51 @@ export async function resolvePending(
     if (n == null) return null;
     const action: ParsedAction = { ...pending.action, amount: n };
     return runAction(business, action, ctx, null, session, lang, a);
+  }
+
+  // Completing a new client: pull phone / address / full name out of one reply.
+  if (pending.kind === "complete_client") {
+    const clientId = pending.action.client_id;
+    if (!clientId) return null;
+    const missing = pending.missing ?? [];
+    const patch: Partial<Client> = {};
+    let rest = a;
+
+    const phoneM = rest.match(/(\+?1?[\s\-.(]*\d{3}[)\s\-.]*\d{3}[\s\-.]*\d{4})/);
+    if (phoneM && missing.includes("phone")) {
+      patch.phone = phoneM[1].replace(/[^\d+]/g, "").replace(/^1(?=\d{10}$)/, "+1").replace(/^(?=\d{10}$)/, "+1");
+      rest = rest.replace(phoneM[1], " ").trim();
+    }
+    rest = rest.replace(/^[,;·-]+|[,;·-]+$/g, "").trim();
+    if (rest) {
+      if (missing.includes("address") && /\d/.test(rest)) {
+        patch.address = normalizeAddress(rest);
+      } else if (missing.includes("name") && !/\d/.test(rest) && rest.split(/\s+/).length <= 4) {
+        patch.name = normalizeName(rest);
+      } else if (missing.includes("address")) {
+        patch.address = normalizeAddress(rest); // street without a number still counts
+      }
+    }
+    if (!Object.keys(patch).length) return null; // unrelated text — parse normally
+
+    const all = await listClients(business.id);
+    const before = all.find((c) => c.id === clientId);
+    if (!before) return null;
+    const client = (await updateClient(clientId, patch)) ?? before;
+
+    const stillMissing = missing.filter((m) =>
+      m === "phone" ? !client.phone : m === "address" ? !client.address : client.name.trim().split(/\s+/).length < 2
+    );
+    const savedBits = [
+      patch.name ? client.name : null,
+      patch.address ? client.address : null,
+      patch.phone ? `📞 ${client.phone}` : null,
+    ].filter(Boolean).join(" · ");
+    if (stillMissing.length) {
+      session.pending = { kind: "complete_client", action: pending.action, missing: stillMissing, expiresAt: pendingExpiry() };
+      return `${t.infoSaved(client.name, savedBits, lang)} ${t.needInfo(client.name, stillMissing, lang)}`;
+    }
+    return t.infoSaved(client.name, savedBits, lang);
   }
   return null;
 }
@@ -254,9 +299,10 @@ async function logQuote(business: Business, p: ParsedAction, ctx: ParseContext, 
     client = matches[0]?.client ?? null;
   }
 
-  // Guard: a new price for an ACTIVE client is a price update, not a re-quote.
-  // (Demoting them would drop MRR and restart follow-up nudges for a won client.)
-  if (client && client.status === "active" && p.amount != null) {
+  // Guard: a new price for an EXISTING active client is a price update, not a
+  // re-quote. (Demoting them would drop MRR and restart follow-up nudges.)
+  // A client we just created via conversation memory is initial setup, not a change.
+  if (client && client.status === "active" && p.amount != null && !p.client_is_new) {
     const updated = (await updateClient(client.id, {
       amount: p.amount,
       billing_period: p.billing_period ?? client.billing_period,
@@ -266,10 +312,14 @@ async function logQuote(business: Business, p: ParsedAction, ctx: ParseContext, 
     return t.priceChanged(updated.name, `${money(p.amount)}${periodLabel(updated.billing_period, lang)}`, lang);
   }
 
+  // "new job <name>..." = already-won work: the client starts ACTIVE and gets no
+  // quote-followup nudges. Only an actual quote starts as quoted.
+  const targetStatus = p.status === "active" ? "active" : "quoted";
+  let isNew = Boolean(p.client_is_new);
   if (client) {
     client =
       (await updateClient(client.id, {
-        status: "quoted",
+        status: targetStatus,
         address: p.address ?? client.address,
         amount: p.amount ?? client.amount,
         billing_period: p.billing_period ?? client.billing_period,
@@ -278,25 +328,41 @@ async function logQuote(business: Business, p: ParsedAction, ctx: ParseContext, 
         ...sched,
       })) ?? client;
   } else {
+    isNew = true;
     client = await createClient(business.id, {
       name: p.client_name ?? p.address ?? "New client",
       address: p.address,
       amount: p.amount,
       billing_period: p.billing_period,
       service_description: p.service_description,
-      status: "quoted",
+      status: targetStatus,
       ...sched,
     });
   }
 
-  await scheduleQuoteReminders(business, client);
+  if (targetStatus === "quoted") await scheduleQuoteReminders(business, client);
+  else await cancelQuoteReminders(client.id);
 
   // Missing the price? Save what we have, remember the question, ask for it.
   if (client.amount == null) {
     session.pending = { kind: "missing_amount", action: { ...p, client_id: client.id }, expiresAt: pendingExpiry() };
     return t.whatAmount(client.name, lang);
   }
-  return t.quoteLogged(clientSummary(client, lang), lang);
+
+  // Completeness rule: a NEW client should have a full name, address, and phone.
+  // Save what we have, then chase what's missing in one question.
+  const confirmation = t.quoteLogged(clientSummary(client, lang), lang);
+  if (isNew) {
+    const missing: string[] = [];
+    if (client.name.trim().split(/\s+/).length < 2) missing.push("name");
+    if (!client.address) missing.push("address");
+    if (!client.phone) missing.push("phone");
+    if (missing.length) {
+      session.pending = { kind: "complete_client", action: { ...p, client_id: client.id }, missing, expiresAt: pendingExpiry() };
+      return `${confirmation}\n${t.needInfo(client.name, missing, lang)}`;
+    }
+  }
+  return confirmation;
 }
 
 async function updateStatus(business: Business, p: ParsedAction, ctx: ParseContext, session: ActionSession, lang: Lang): Promise<string> {

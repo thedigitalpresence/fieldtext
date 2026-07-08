@@ -193,6 +193,16 @@ export const t = {
       : "📸 Got your photo — to load a client list from a photo, use Import on your dashboard: fieldtext.vercel.app/dashboard/import",
   yesToAdd: (name: string, lang: Lang) =>
     lang === "es" ? `No encontré a "${name}". Responde SÍ para agregarlo, o manda el nombre correcto.` : `I don't know "${name}". Reply YES to add them, or send the right name.`,
+  needInfo: (name: string, missing: string[], lang: Lang) => {
+    const words: Record<string, [string, string]> = {
+      name: ["their full name", "su nombre completo"],
+      address: ["the address", "la dirección"],
+      phone: ["a phone number", "un teléfono"],
+    };
+    const list = missing.map((m) => (lang === "es" ? words[m]?.[1] : words[m]?.[0])).filter(Boolean);
+    const joined = list.length > 1 ? list.slice(0, -1).join(", ") + (lang === "es" ? " y " : " and ") + list[list.length - 1] : list[0];
+    return lang === "es" ? `¿Me das ${joined} de ${name}?` : `What's ${joined} for ${name}?`;
+  },
   didYouMean: (candidate: string, given: string, lang: Lang) =>
     lang === "es"
       ? `¿Te refieres a ${candidate}? Responde SÍ — o NUEVO para agregar "${given}" como cliente nuevo.`

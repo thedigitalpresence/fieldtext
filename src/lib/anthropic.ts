@@ -129,7 +129,7 @@ function systemPrompt(ctx: ParseContext): string {
     ``,
     `CRITICAL guardrails:`,
     `- "finished/done/wrapped up" + work words ("finished mowing at the smiths") = log_job, NOT update_status completed. Only mark completed/lost when the RELATIONSHIP ends ("we're done with the smiths for good", "lost the jones account").`,
-    `- "new job/new client <Name> ... $X a week/month" or ANY new recurring arrangement = log_quote (a new client engagement with amount + billing_period), NOT log_job. log_job is only for work already done or a dated one-off visit.`,
+    `- "new job/new client <Name> ... $X a week/month" = WON work: log_quote with status="active" (create the client as ACTIVE with amount + billing_period — it is not a pending quote). Only "quoted <name>..." texts are pending quotes. Neither is log_job — log_job is only for work already performed or a dated one-off visit.`,
     `- Use the client name EXACTLY as texted (e.g. "Eric Shackelford" stays Eric) — NEVER substitute a similar known client's name; the app confirms matches itself.`,
     `- One-off future work with a price ("mulch at the smiths next tuesday $450") = log_job with scheduled_on + amount.`,
     `- If they paid by a method ("bob venmoed 300", "paid cash") set payment_method.`,
@@ -316,14 +316,14 @@ function parseClause(text: string, _ctx: ParseContext): Record<string, any> | nu
     if (verbM) {
       const service = verbM[2].replace(/\bfor\b.*$/i, "").replace(/^(a|an|un|una)\s+/i, "").trim();
       return {
-        intent: "log_quote", confidence: 0.6,
+        intent: "log_quote", confidence: 0.6, status: "active", // "new job" = won work
         client_name: cleanName(verbM[1]),
         amount: t, billing_period: t,
         service_description: service || undefined,
         ...extractSchedule(t),
       };
     }
-    return { ...parseQuote("quoted " + newJobM[1]), ...extractSchedule(t), intent: "log_quote", confidence: 0.6 };
+    return { ...parseQuote("quoted " + newJobM[1]), ...extractSchedule(t), intent: "log_quote", status: "active", confidence: 0.6 };
   }
 
   // Status change (plain language) — must not collide with job verbs

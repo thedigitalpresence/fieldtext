@@ -25,9 +25,10 @@ export interface BusinessSettings {
 
 /** Conversation memory: the pending question the next inbound text may answer. */
 export interface PendingState {
-  kind: "which_client" | "confirm_create" | "missing_amount" | "confirm_match";
+  kind: "which_client" | "confirm_create" | "missing_amount" | "confirm_match" | "complete_client";
   action: ParsedAction; // the action to run once resolved
   candidateIds?: string[]; // which_client choices in order / confirm_match's single candidate
+  missing?: string[]; // complete_client: which fields we're still chasing ("name"|"address"|"phone")
   expiresAt: string; // ISO; stale questions are ignored
 }
 
@@ -239,6 +240,7 @@ export interface ParsedAction {
   correction_text?: string;
   // roadmap entities
   client_id?: string; // resolved by conversation memory — handlers use it directly
+  client_is_new?: boolean; // set when conversation memory just created this client (completeness ask still applies)
   note_text?: string; // update_client_info: gate codes, misc notes
   phone?: string; // update_client_info
   email?: string; // update_client_info

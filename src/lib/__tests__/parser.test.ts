@@ -337,9 +337,10 @@ test("substring/exact names stay STRONG (no nagging on normal texts)", () => {
   assert.ok(matchScore({ name: "angela jones" }, { name: "Angela Jones", address: null }) >= STRONG_MATCH);
 });
 
-test("'new job <name> $1000 a week' = a new client engagement, not a work log", () => {
+test("'new job <name> $1000 a week' = a new ACTIVE client, not a work log or pending quote", () => {
   const a = one("New job Eric Shackelford has a tent for 1000 a week");
   assert.equal(a[0].intent, "log_quote");
+  assert.equal(a[0].status, "active"); // won work — no follow-up nudges
   assert.equal(a[0].client_name, "Eric Shackelford");
   assert.equal(a[0].amount, 1000);
   assert.equal(a[0].billing_period, "weekly");

@@ -212,7 +212,9 @@ export function normalizeService(s?: string | null): string | undefined {
 // ── Status ────────────────────────────────────────────────────────────────────
 export function normalizeStatus(input?: string | null): ClientStatus | undefined {
   if (!input) return undefined;
-  const t = input.toLowerCase();
+  const t = input.toLowerCase().trim();
+  // Canonical enum values pass straight through (parser/heuristic send these).
+  if (/^(quoted|active|completed|lost|paused)$/.test(t)) return t as ClientStatus;
   if (/(accepted|said yes|says yes|say yes|are in|is in|we're in|signed|booked|approved|on board|good to go|let'?s do it|dijo que s[ií]|dijeron que s[ií]|acept[oó]|aceptaron|empieza|empiezan|s[ií] quiere|de acuerdo)/.test(t)) return "active";
   if (/(declined|said no|lost|passed|backed out|went with someone|not interested|perdimos|perd[ií]|no quiso|rechaz|se fue|cancel)/.test(t)) return "lost";
   if (/(completed|complete|finished|wrapped|all done|\bdone\b|terminad|termin[oó]|acabad|complet)/.test(t)) return "completed";
