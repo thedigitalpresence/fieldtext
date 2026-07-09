@@ -22,10 +22,11 @@ export default function Home() {
         <h1 className="text-4xl font-bold tracking-tight">
           Field<span className="text-brand">Text</span>
         </h1>
-        <p className="max-w-lg text-lg text-gray-600">
-          Run your whole business with a text message. If you work out of a truck, FieldText is your
-          black book. Text one number like you talk, and it keeps everything straight and texts you back.
-        </p>
+        <div className="flex max-w-lg flex-col gap-2 text-gray-600">
+          <p className="text-xl font-semibold text-gray-900">Run your whole business with a text message.</p>
+          <p className="text-lg">If you work out of a truck, FieldText is your black book.</p>
+          <p className="text-lg">Text one number like you talk. It keeps everything straight and texts you back.</p>
+        </div>
         <p className="max-w-md text-sm text-gray-500">
           Built for people in the field: {FOR_WHO.join(", ")}, and anyone who runs jobs on the go.
         </p>
