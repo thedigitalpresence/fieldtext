@@ -223,6 +223,23 @@ test("CSV import with headers", () => {
   assert.equal(ds[0].amount, 300);
 });
 
+// ── Multi-action: quote + obligation reminder in one message ──────────────────
+test("quote + 'need to send quote tomorrow' = quote AND reminder", () => {
+  const a = one("Quoting James Danks at 222 west street need to send quote tomorrow");
+  assert.equal(a.length, 2, "two actions");
+  assert.equal(a[0].intent, "log_quote");
+  assert.equal(a[0].client_name, "James Danks");
+  assert.equal(a[0].address, "222 West St");
+  assert.equal(a[1].intent, "set_reminder");
+  assert.ok(a[1].due_at, "reminder has a due date");
+});
+test("obligation reminder needs a time to split (no false positives)", () => {
+  // "needs mowing" is not an obligation reminder (no 'to', no time)
+  const a = one("quoted bob at 5 oak st for $200/mo needs mowing");
+  assert.equal(a.length, 1);
+  assert.equal(a[0].intent, "log_quote");
+});
+
 // ── Roadmap intents (heuristic path) ──────────────────────────────────────────
 import { nextCycleDate } from "../charges";
 import { normalizeExpenseCategory, normalizePaymentMethod } from "../normalize";

@@ -57,10 +57,21 @@ const STREET_ABBR: Record<string, string> = {
   north: "N", south: "S", east: "E", west: "W",
   apartment: "Apt", apt: "Apt", suite: "Ste", ste: "Ste", unit: "Unit",
 };
+const DIRECTIONS = new Set(["north", "south", "east", "west"]);
+const STREET_TYPES = new Set(["street", "st", "avenue", "ave", "av", "road", "rd", "drive", "dr", "lane", "ln", "boulevard", "blvd", "court", "ct", "place", "pl", "way"]);
 export function normalizeAddress(s?: string | null): string | undefined {
   if (!s) return undefined;
-  const tokens = s.trim().replace(/\s+/g, " ").split(" ").map((tok) => {
+  const words = s.trim().replace(/\s+/g, " ").split(" ");
+  const tokens = words.map((tok, i) => {
     const lower = tok.toLowerCase().replace(/[.,]/g, "");
+    // A direction word that's the street NAME ("222 West St") — not a modifier
+    // ("5 N Main St") — should stay spelled out. Heuristic: it's the name when
+    // the next word is a street type (St/Ave/...).
+    if (DIRECTIONS.has(lower)) {
+      const next = (words[i + 1] ?? "").toLowerCase().replace(/[.,]/g, "");
+      if (STREET_TYPES.has(next)) return titleCase(tok);
+      return STREET_ABBR[lower];
+    }
     if (STREET_ABBR[lower]) return STREET_ABBR[lower];
     if (/\d/.test(tok)) return tok.toLowerCase(); // house numbers, "12b"
     return titleCase(tok);

@@ -414,6 +414,26 @@ test("G6: 'Add to <client>' captions attach directly (instruction words ignored)
   }
 });
 
+test("G7: 'don't know' the price saves the quote and continues intake (no dead-end)", async () => {
+  await convo("G7 price-skip", [], [
+    { send: "quoted Nina Vale at 5 oak st", expect: [/price/i] },
+    { send: "don't know", expect: [/phone/i], reject: [/help with|what'?s the price/i] },
+  ]);
+  const row = await getClient("Nina Vale");
+  assert.ok(row, "quote saved without a price");
+  assert.equal(row!.amount, null);
+  assert.equal(row!.status, "quoted");
+});
+
+test("G7: quote + obligation reminder both happen in one message", async () => {
+  await convo("G7 multi", [], [
+    { send: "Quoting James Danks at 222 west street need to send quote tomorrow", expect: [/price/i, /Reminder set ✅/] },
+  ]);
+  const row = await getClient("James Danks");
+  assert.ok(row, "quote created");
+  assert.equal(row!.address, "222 West St");
+});
+
 test("G6: photo/notes requests route to query, never to help/clarification", async () => {
   const { heuristicParse } = await import("../anthropic");
   const ctx: any = { nowISO: new Date().toISOString(), timezone: "America/New_York", businessName: "x", ownerName: "m", lang: "en", knownClients: [] };

@@ -232,8 +232,18 @@ export async function resolvePending(
   }
 
   if (pending.kind === "missing_amount") {
+    // "don't know" / "not sure" / "skip" → save without a price and move on.
+    if (/^\s*(don'?t know|dunno|not sure|no idea|unsure|no clue|skip|later|tbd|n\/?a|no s[eé]|no estoy seguro|luego|despu[eé]s)\b/i.test(a)) {
+      const clientId = pending.action.client_id;
+      if (clientId) {
+        const all = await listClients(business.id);
+        const c = all.find((x) => x.id === clientId);
+        if (c) return finishIntake(c, pending.action, session, lang);
+      }
+      return null;
+    }
     const n = normalizeAmount(a);
-    if (n == null) return null;
+    if (n == null) return null; // not a number, not a skip → let it parse as its own thing
     const action: ParsedAction = { ...pending.action, amount: n };
     return runAction(business, action, ctx, null, session, lang, a);
   }
@@ -415,24 +425,29 @@ async function logQuote(business: Business, p: ParsedAction, ctx: ParseContext, 
     return t.whatAmount(client.name, lang);
   }
 
-  // Mandatory profile for a NEW client: full name, address, phone, service.
-  // Save what we have, then chase what's missing in one question — and finish
-  // the intake with an optional "anything to note?" step.
+  return finishIntake(client, { ...p, client_id: client.id, client_is_new: isNew }, session, lang);
+}
+
+/**
+ * Confirm a saved client and, if it's brand new, chase the mandatory profile
+ * (address, phone, service) then the optional notes step. Shared by logQuote
+ * and the price-skip path so "don't know the price" still finishes intake.
+ */
+function finishIntake(client: Client, baseAction: ParsedAction, session: ActionSession, lang: Lang): string {
   const confirmation = t.quoteLogged(clientSummary(client, lang), lang);
-  if (isNew) {
-    const missing: string[] = [];
-    if (client.name.trim().split(/\s+/).length < 2) missing.push("name");
-    if (!client.address) missing.push("address");
-    if (!client.phone) missing.push("phone");
-    if (!client.service_description) missing.push("service");
-    if (missing.length) {
-      session.pending = { kind: "complete_client", action: { ...p, client_id: client.id }, missing, expiresAt: pendingExpiry() };
-      return `${confirmation}\n${t.needInfo(client.name, missing, lang)}`;
-    }
-    if (!client.notes) {
-      session.pending = { kind: "complete_client", action: { ...p, client_id: client.id }, missing: ["notes"], expiresAt: pendingExpiry() };
-      return `${confirmation}\n${t.anyNotes(client.name, lang)}`;
-    }
+  if (!baseAction.client_is_new) return confirmation;
+  const missing: string[] = [];
+  if (client.name.trim().split(/\s+/).length < 2) missing.push("name");
+  if (!client.address) missing.push("address");
+  if (!client.phone) missing.push("phone");
+  if (!client.service_description) missing.push("service");
+  if (missing.length) {
+    session.pending = { kind: "complete_client", action: { ...baseAction, client_id: client.id }, missing, expiresAt: pendingExpiry() };
+    return `${confirmation}\n${t.needInfo(client.name, missing, lang)}`;
+  }
+  if (!client.notes) {
+    session.pending = { kind: "complete_client", action: { ...baseAction, client_id: client.id }, missing: ["notes"], expiresAt: pendingExpiry() };
+    return `${confirmation}\n${t.anyNotes(client.name, lang)}`;
   }
   return confirmation;
 }

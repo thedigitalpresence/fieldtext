@@ -102,7 +102,9 @@ function systemPrompt(ctx: ParseContext): string {
   return [
     `You parse text messages a landscaping business owner (${ctx.ownerName} at ${ctx.businessName}) sends to log and manage their business by SMS.`,
     `The owner texts fast: lowercase, no punctuation, abbreviations, typos, English / Spanish / Spanglish, and often several facts in one message. Detect the language per message and extract the same canonical data regardless.`,
-    `Return an ARRAY of actions via the record_actions tool — one message can contain several (e.g. a quote AND a reminder).`,
+    `Return an ARRAY of actions via the record_actions tool — one message can contain several. ALWAYS split these out:`,
+    `  • "Quoting James at 222 West St, need to send the quote tomorrow" = TWO actions: log_quote (James, 222 West St) AND set_reminder (reminder_text "send James quote", due tomorrow).`,
+    `  • An obligation phrase — "need to / gotta / have to / got to / don't forget to / remember to <do X> <time>" — is ALWAYS its own set_reminder action, in addition to whatever else is in the message.`,
     ``,
     `Current date/time: ${ctx.nowISO} (timezone ${ctx.timezone}). Resolve every relative date ("friday"/"viernes", "in 3 days"/"en 3 días", "the 19th"/"el 19", "tomorrow"/"mañana") to a concrete value in that timezone. Reminders default to 9:00 AM local.`,
     ``,
@@ -232,8 +234,21 @@ export function heuristicParse(text: string, ctx: ParseContext): ParseResult {
 
 const CONJUNCTION =
   /\b(?:and|then|also|y|luego|tambi[eé]n)\s+(?=(?:remind|remember|recu[eé]rda|set a reminder|quote|quoted|coti[a-zà-ÿ]*|mark|update|collect|collected|got paid|paid|cobr[eé]|recib[ií]|pag|mow|mowed|cut|trim|clean|cleanup|cort[eé]|pod[eé]|limpi[eé]|hice|did)\b)/i;
+const OBLIGATION = /\b((?:need|needs|have|has|got)\s+to\s+.+|gotta\s+.+|don'?t\s+forget\s+.+|remember\s+to\s+.+|remind\s+me\s+.+)$/i;
+const HAS_TIME = /\b(today|tonight|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next week|in \d+ days?|ma[ñn]ana|hoy|lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo|pr[oó]xima semana|en \d+ d[ií]as?)\b/i;
 function splitClauses(text: string): string[] {
-  return text.split(CONJUNCTION).map((s) => s.trim()).filter(Boolean);
+  const out: string[] = [];
+  for (const part of text.split(CONJUNCTION)) {
+    // Peel a trailing obligation ("...need to send quote tomorrow") into its own
+    // clause so it becomes a reminder alongside whatever came before it.
+    const m = part.match(new RegExp(`^(.*?[a-z0-9])[\\s,]+${OBLIGATION.source}`, "i"));
+    if (m && HAS_TIME.test(m[2]) && m[1].trim().length > 2) {
+      out.push(m[1].trim(), m[2].trim());
+    } else {
+      out.push(part.trim());
+    }
+  }
+  return out.map((s) => s.trim()).filter(Boolean);
 }
 
 function isQuestion(t: string): boolean {
@@ -316,10 +331,11 @@ function parseClause(text: string, _ctx: ParseContext): Record<string, any> | nu
     return { intent: "query", confidence: 0.6, query_text: t };
   }
 
-  // Reminder
-  if (/\b(remind me|remember to|follow up with|recu[eé]rdame|recordarme|dar seguimiento)/i.test(lower)) {
+  // Reminder — incl. obligations ("need to send quote tomorrow") when a time is present
+  const isObligation = /\b(need|needs|have|has|got)\s+to\b|gotta|don'?t\s+forget/i.test(lower) && HAS_TIME.test(lower);
+  if (/\b(remind me|remember to|follow up with|recu[eé]rdame|recordarme|dar seguimiento)/i.test(lower) || isObligation) {
     let body = t
-      .replace(/^.*?(remind me to|remind me|remember to|recu[eé]rdame que|recu[eé]rdame|recordarme)\s*/i, "")
+      .replace(/^.*?(remind me to|remind me|remember to|recu[eé]rdame que|recu[eé]rdame|recordarme|need to|needs to|have to|has to|got to|gotta|don'?t forget to|don'?t forget)\s*/i, "")
       .replace(/^.*?(follow up with|dar seguimiento a)/i, (m) => m);
     body = body.replace(/\b(today|tomorrow|next week|in \d+ days?|on \w+|this \w+|el \w+|ma[ñn]ana|hoy|pr[oó]xima semana|en \d+ d[ií]as?|lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b.*$/i, "").trim();
     return { intent: "set_reminder", confidence: 0.6, reminder_text: body || t, due_at: t };
@@ -336,7 +352,7 @@ function parseClause(text: string, _ctx: ParseContext): Record<string, any> | nu
   }
 
   // Quote — incl. "new job/client <name> ... $X a week" (a new engagement, not a work log)
-  if (/\b(quote|quoted|coti[a-zà-ÿ]*)/i.test(lower)) {
+  if (/\b(quote|quoted|quoting|coti[a-zà-ÿ]*)/i.test(lower)) {
     return { ...parseQuote(t), ...extractSchedule(t), intent: "log_quote", confidence: 0.6 };
   }
   const newJobM = t.match(/^new (?:job|client|account|customer)[:,]?\s+(.+)$/i);
@@ -389,7 +405,7 @@ function parseClause(text: string, _ctx: ParseContext): Record<string, any> | nu
 /** Pull name/address/amount/period/service out of a quote clause (EN + ES). */
 function parseQuote(text: string): Record<string, any> {
   // Strip the quote keyword and a leading ES preposition ("a", "a los").
-  let s = text.replace(/^.*?(quoted|quote|coti[a-zà-ÿ]*)\s*/i, "").replace(/^(a los|a las|a la|a el|al|a|to)\s+/i, "");
+  let s = text.replace(/^.*?(quoted|quoting|quote|coti[a-zà-ÿ]*)\s*/i, "").replace(/^(a los|a las|a la|a el|al|a|to)\s+/i, "");
 
   // Find the price: a number tied to a period word ("500 a month", "$500/mo", "$500 al mes"),
   // or — for one-time quotes — a $-prefixed amount with no period ("$350 for cleanup").
