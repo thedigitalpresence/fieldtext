@@ -32,7 +32,7 @@ function fakeReply(input: string): string {
   }
   if (/remind/.test(t)) return `Reminder set ✅ I'll text you Fri, Jul 10, 9:00 AM: call Jane`;
   if (/rain|push/.test(t)) return "Moved ✅ 3 stop(s) → Jul 8: The Smiths, Garcia, Jane.";
-  if (/invoice/.test(t)) return "Invoice for Bob ($450): fieldtext.app/i/a1b2…\nForward it from your phone 👍";
+  if (/invoice/.test(t)) return "Invoice for Bob ($450): fieldtextapp.com/i/a1b2…\nForward it from your phone 👍";
   if (/mowed|mow|cut|trim|clean/.test(t)) return "Logged ✅ mowing for The Smiths on Jul 7. Next visit Jul 14.";
   return 'I can log quotes, jobs, payments, and reminders — try "quoted Jane at 5 Oak St for $200/mo".';
 }

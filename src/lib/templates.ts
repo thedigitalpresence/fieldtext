@@ -4,7 +4,13 @@
  * language; adding a language = add a block here. The parsing/normalization
  * pipeline is shared and language-agnostic.
  */
+import { config } from "./config";
 import type { Lang, BillingPeriod, ClientStatus, Client, Business } from "./types";
+
+/** Bare host of the app URL (no scheme), for short SMS links. */
+function appHost(): string {
+  return config.appUrl().replace(/^https?:\/\//, "").replace(/\/$/, "");
+}
 
 /** The operator's language (default English). */
 export function businessLang(b: Pick<Business, "settings">): Lang {
@@ -189,8 +195,8 @@ export const t = {
       : `Welcome to FieldText, ${ownerName}! 🌱 This number is your black book. Try it now: "quoted Maria at 12 Elm St for $200/mo". Text HELP anytime.`,
   photoHint: (lang: Lang) =>
     lang === "es"
-      ? "📸 Recibí tu foto — para cargar una lista de clientes desde una foto, usa Importar en tu panel: fieldtext.vercel.app/dashboard/import"
-      : "📸 Got your photo — to load a client list from a photo, use Import on your dashboard: fieldtext.vercel.app/dashboard/import",
+      ? `📸 Recibí tu foto — para cargar una lista de clientes desde una foto, usa Importar en tu panel: ${appHost()}/dashboard/import`
+      : `📸 Got your photo — to load a client list from a photo, use Import on your dashboard: ${appHost()}/dashboard/import`,
   photoWho: (lang: Lang) =>
     lang === "es"
       ? "📸 ¿De qué cliente es esta foto? Responde con el nombre — o IMPORTAR si es una lista de clientes."

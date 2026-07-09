@@ -875,7 +875,7 @@ export async function buildSnapshot(business: Business): Promise<string> {
   const photoCounts = new Map<string | null, number>();
   for (const a of (attRows ?? []) as { client_id: string | null }[]) photoCounts.set(a.client_id, (photoCounts.get(a.client_id) ?? 0) + 1);
   if (photoCounts.size) {
-    lines.push(`SITE PHOTOS (texted in; the owner views them on the client's card at fieldtext.vercel.app/dashboard — you cannot send them back by SMS):`);
+    lines.push(`SITE PHOTOS (texted in; the owner views them on the client's card in the dashboard — you cannot send them back by SMS):`);
     for (const [cid, n] of photoCounts) lines.push(`- ${nameOf(cid)}: ${n} photo(s)`);
   }
   return lines.join("\n");
