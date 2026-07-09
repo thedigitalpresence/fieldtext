@@ -414,6 +414,16 @@ test("G6: 'Add to <client>' captions attach directly (instruction words ignored)
   }
 });
 
+test("G6: photo/notes requests route to query, never to help/clarification", async () => {
+  const { heuristicParse } = await import("../anthropic");
+  const ctx: any = { nowISO: new Date().toISOString(), timezone: "America/New_York", businessName: "x", ownerName: "m", lang: "en", knownClients: [] };
+  for (const q of ["need her photos", "send me elena's photos", "photos?", "elena's notes", "show me bob's history", "what about her balance"]) {
+    SCENARIOS++;
+    const intent = heuristicParse(q, ctx).actions[0].intent;
+    assert.equal(intent, "query", `"${q}" should be a query, got ${intent}`);
+  }
+});
+
 test("G6: snapshot knows notes and photos (what queries answer from)", async () => {
   SCENARIOS++;
   await reset(FULL_BOOK);

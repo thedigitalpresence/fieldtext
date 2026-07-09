@@ -117,7 +117,8 @@ function systemPrompt(ctx: ParseContext): string {
     `- recurring service schedule: "every other tuesday"/"weekly on mondays"/"cada dos semanas los martes" -> service_interval (weekly|biweekly|monthly) + service_day. This is the SERVICE cadence, separate from billing_period.`,
     `- payments: "collected/paid/cobré" -> log_payment payment_status=paid; "owes"/"hasn't paid"/"debe" -> payment_status=unpaid; "overdue/atrasado" -> overdue.`,
     ``,
-    `Intents: log_quote, update_status, log_job, log_payment, set_reminder, query (questions like "who do I follow up with?"/"who owes me?"/"what's my monday route?"), correction (fixing the last record, e.g. "no it's 333 not 233"), help,`,
+    `Intents: log_quote, update_status, log_job, log_payment, set_reminder, query, correction (fixing the last record, e.g. "no it's 333 not 233"), help,`,
+    `query = ANY question or request to see saved info — "who owes me?", "what's my monday route?", "elena's notes", "need her photos", "send me her pics", "what do I know about bob", "her address". Anything asking to SEE or KNOW something is a query (the answer step has the recent conversation, so it resolves "her"/"his"). Route these to query — NEVER to help or needs_clarification.`,
     `log_expense ("spent 84 on mulch at home depot" -> amount + expense_category + description — money OUT, never log_payment),`,
     `update_client_info ("angela's number is 555-0142" -> phone; "gate code 4412 at the smiths" -> note_text; "jones referred by bob" -> referred_by; "note for the wilsons: big backyard, steep slope, wants edging" -> note_text — site-visit notes BEFORE any quote are normal, the client may not exist yet),`,
     `pause_client ("hold jones til spring", "pause the smiths" -> pause_until if a date is given) / resume_client,`,
@@ -140,7 +141,11 @@ function systemPrompt(ctx: ParseContext): string {
     `needs_clarification rules — the app has its own follow-up system, so stay out of its lane:`,
     `- NEVER ask about client identity or suggest existing client names ("do you mean X?") — extract the name EXACTLY as texted; the app confirms matches itself.`,
     `- NEVER ask for missing fields (address, phone, price, service) on log_quote or new-client texts — return the action with whatever fields are present; the app chases the rest one question at a time.`,
-    `- needs_clarification is ONLY for a genuinely unreadable intent. When in doubt between asking and returning a partial action, return the partial action.`,
+    `- A question or request to see info is a QUERY, never needs_clarification. When in doubt between asking and returning a partial action, return the partial action.`,
+    ``,
+    `VOICE — you are ${ctx.ownerName}'s bookkeeper, not software:`,
+    `- If you ever write needs_clarification, keep it to ONE short plain-language question. Write it as real text with real line breaks — never the characters backslash-n.`,
+    `- NEVER describe yourself as a "parser", "system", "SMS system", "media system", or "software", and never say "I don't have access". You just keep their book.`,
   ].join("\n");
 }
 
@@ -235,7 +240,12 @@ function isQuestion(t: string): boolean {
   return (
     /\?/.test(t) ||
     /^(who|what|when|where|which|how|do i|am i|is |are |any |qu[ieé]|cu[aá]l|cu[aá]nto|cu[aá]ndo|d[oó]nde|qu[eé]|tengo|hay )/i.test(t.trim()) ||
-    /\b(mrr|recurring revenue|revenue|how much|how many|ingreso|ingresos|cu[aá]nto gano)\b/i.test(t)
+    /\b(mrr|recurring revenue|revenue|how much|how many|ingreso|ingresos|cu[aá]nto gano)\b/i.test(t) ||
+    // "need her photos", "send me elena's notes", "show me bob's history"
+    /\b(need|show|send|see|view|pull up|get me|give me|list|what about)\b.*\b(photos?|pics?|pictures?|images?|notes?|history|balance|address|phone|schedule|info)\b/i.test(t) ||
+    /^(photos?|pics?|pictures?|images?|notes?)\??$/i.test(t.trim()) ||
+    // possessive/standalone info nouns: "elena's notes", "bob notes", "her photos"
+    /\b(photos?|pics?|pictures?|images?|notes?|balance|history)\s*\??$/i.test(t.trim())
   );
 }
 

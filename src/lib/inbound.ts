@@ -23,7 +23,9 @@ const STOP_WORDS = new Set(["stop", "stopall", "unsubscribe", "baja"]);
 const AMBIGUOUS_STOP = new Set(["cancel", "end", "quit", "cancelar"]);
 const START_WORDS = new Set(["start", "unstop", "alta", "continuar"]);
 function replyTwiml(message: string): string {
-  const escaped = message.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  // Models sometimes emit the literal two chars "\n" — turn those into real breaks.
+  const clean = message.replace(/\\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  const escaped = clean.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   return `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${escaped}</Message></Response>`;
 }
 
