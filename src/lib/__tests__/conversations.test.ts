@@ -362,6 +362,28 @@ test("G6: photo without caption asks whose site, reply resolves it", async () =>
   assert.equal(rows[0].client_id, (dee as unknown as { id: string }).id, "attached to the right client");
 });
 
+test("G6: 'Add to <client>' captions attach directly (instruction words ignored)", async () => {
+  const captions = [
+    "Add to elena shackelford",
+    "attach to the smiths",
+    "this is dee garcia",
+    "save to bob johnson please",
+    "elena shackelford backyard", // trailing description via surname containment
+  ];
+  const expected = ["Elena Shackelford", "The Smiths", "Dee Garcia", "Bob Johnson", "Elena Shackelford"];
+  for (let i = 0; i < captions.length; i++) {
+    SCENARIOS++;
+    await reset(FULL_BOOK);
+    SID++;
+    const out = await handleInbound({
+      from: "+15550001111", to: "+19995550000", body: captions[i],
+      messageSid: `SMcap${SID}`, numMedia: 1,
+      media: [{ url: `https://api.twilio.com/fake/Media/ME${SID}`, contentType: "image/jpeg" }],
+    });
+    assert.match(out.twiml, new RegExp(`Saved.*photo.*${expected[i]}`, "i"), `"${captions[i]}" → ${out.twiml}`);
+  }
+});
+
 // ── G5: full command regression across book states ────────────────────────────
 test("G5: every command family works against every book state", async () => {
   const commands: { send: string; expect: RegExp }[] = [

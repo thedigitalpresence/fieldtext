@@ -2,7 +2,7 @@ import { db, getBusinessById, findAuthorizedPhone } from "./supabase";
 import { toE164 } from "./phone";
 import { parseMessage, ParseContext } from "./anthropic";
 import { executeParsed, resolvePending, ActionSession } from "./intents";
-import { listClients, matchClientsScored, updateClient, STRONG_MATCH } from "./clients";
+import { listClients, findClientInPhrase } from "./clients";
 import { saveMedia, InboundMedia } from "./attachments";
 import { logMessage } from "./twilio";
 import { logSms, logLlm } from "./billing";
@@ -180,9 +180,10 @@ export async function handleInbound(params: InboundParams): Promise<InboundOutco
  */
 async function handlePhoto(business: Business, authPhoneId: string, media: InboundMedia[], caption: string, lang: Lang): Promise<string> {
   if (caption.trim().length >= 3) {
-    const matches = await matchClientsScored(business.id, { name: caption });
-    if (matches.length === 1 && matches[0].score >= STRONG_MATCH) {
-      const client = matches[0].client;
+    // Finds the client anywhere in the caption ("Add to elena shackelford",
+    // "this is the smiths backyard") — instruction words don't poison it.
+    const client = await findClientInPhrase(business.id, caption);
+    if (client) {
       const saved = await saveMedia(business.id, client.id, media, caption);
       if (saved > 0) {
         return t.photoSaved(saved, client.name, lang);

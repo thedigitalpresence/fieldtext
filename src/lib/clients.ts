@@ -76,6 +76,42 @@ export async function matchClients(
   return (await matchClientsScored(businessId, opts)).map((x) => x.client);
 }
 
+// Words that are instructions, not identity ("add to elena shackelford").
+const PHRASE_FILLER = new Set([
+  "add", "attach", "save", "send", "put", "this", "is", "it", "its", "to", "for", "of", "on",
+  "photo", "photos", "pic", "pics", "picture", "site", "at", "the", "please",
+  "foto", "fotos", "agrega", "agregar", "guarda", "para", "de", "a", "es",
+]);
+
+/**
+ * Find a client named ANYWHERE in a free-text phrase ("Add to elena shackelford",
+ * "this is the smiths backyard"). Tries progressively shorter suffixes and
+ * prefixes so instruction words never poison the match. Strong single hits only.
+ */
+export async function findClientInPhrase(businessId: string, phrase: string): Promise<Client | null> {
+  const words = phrase.trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return null;
+  const tryMatch = async (q: string): Promise<Client | null> => {
+    if (q.replace(/[^a-zà-ÿ]/gi, "").length < 3) return null;
+    const m = await matchClientsScored(businessId, { name: q });
+    return m.length === 1 && m[0].score >= STRONG_MATCH ? m[0].client : null;
+  };
+  // Whole phrase first, then drop instruction-y leading words, then trailing ones.
+  const direct = await tryMatch(words.join(" "));
+  if (direct) return direct;
+  for (let start = 1; start < Math.min(words.length, 7); start++) {
+    if (!PHRASE_FILLER.has(words[start - 1].toLowerCase().replace(/[^a-zà-ÿ]/g, ""))) break;
+    const hit = await tryMatch(words.slice(start).join(" "));
+    if (hit) return hit;
+  }
+  for (let end = words.length - 1; end >= 1; end--) {
+    if (!PHRASE_FILLER.has(words[end].toLowerCase().replace(/[^a-zà-ÿ]/g, ""))) break;
+    const hit = await tryMatch(words.slice(0, end).join(" "));
+    if (hit) return hit;
+  }
+  return null;
+}
+
 /** Pure name+address match score (exported for tests). Higher = better match. */
 export function matchScore(query: { name?: string; address?: string }, cand: { name: string; address?: string | null }): number {
   return score({ name: cand.name, address: cand.address ?? null } as Client, norm(query.name), norm(query.address));

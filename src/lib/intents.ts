@@ -1,5 +1,5 @@
 import { db } from "./supabase";
-import { matchClients, matchClientsScored, createClient, updateClient, listClients, STRONG_MATCH } from "./clients";
+import { matchClients, matchClientsScored, createClient, updateClient, listClients, findClientInPhrase, STRONG_MATCH } from "./clients";
 import { createReminder, formatWhen, scheduleQuoteReminders, cancelQuoteReminders } from "./reminders";
 import { answerQuery, ParseContext } from "./anthropic";
 import { logLlm } from "./billing";
@@ -168,12 +168,12 @@ export async function resolvePending(
   // "Whose site is this photo from?" — the reply names the client.
   if (pending.kind === "attach_photo") {
     if (/^\s*(import|importar)\s*[.!]?\s*$/i.test(a)) return t.photoHint(lang);
-    const matches = await matchClientsScored(business.id, { name: a });
-    if (matches.length === 1 && matches[0].score >= STRONG_MATCH) {
-      const client = matches[0].client;
-      const saved = await saveMedia(business.id, client.id, pending.media ?? [], pending.action.note_text ?? null);
-      return saved > 0 ? t.photoSaved(saved, client.name, lang) : t.errorSaving(lang);
+    const found = await findClientInPhrase(business.id, a);
+    if (found) {
+      const saved = await saveMedia(business.id, found.id, pending.media ?? [], pending.action.note_text ?? null);
+      return saved > 0 ? t.photoSaved(saved, found.name, lang) : t.errorSaving(lang);
     }
+    const matches = await matchClientsScored(business.id, { name: a });
     if (matches.length > 1) {
       session.pending = pending; // keep the photo waiting; a more specific name resolves it
       const opts = matches.slice(0, 4).map((m, i) => `(${i + 1}) ${m.client.name}${m.client.address ? ` — ${m.client.address}` : ""}`).join("  ");
