@@ -118,6 +118,9 @@ const en = {
   genericError: "Something went wrong — try again.",
   importedBanner: "Imported {n} client(s) ✅",
   photos: "Photos",
+  dragHint: "Tip: drag a card between columns",
+  dropActive: "Drop to mark Active ✓",
+  dropQuoted: "Drop to move to Quoted",
 };
 
 const es: Dict = {
@@ -222,6 +225,9 @@ const es: Dict = {
   genericError: "Algo salió mal — intenta de nuevo.",
   importedBanner: "Importé {n} cliente(s) ✅",
   photos: "Fotos",
+  dragHint: "Tip: arrastra una tarjeta entre columnas",
+  dropActive: "Suelta para marcar Activo ✓",
+  dropQuoted: "Suelta para marcar Cotizado",
 };
 
 const DICTS: Record<Lang, Dict> = { en, es };

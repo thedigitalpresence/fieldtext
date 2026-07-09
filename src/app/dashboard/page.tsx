@@ -217,6 +217,7 @@ export default async function DashboardPage({ searchParams }: { searchParams?: {
     exportCsv: d.exportCsv, phoneLabel: d.phoneLabel, emailLabel: d.emailLabel,
     pausedUntil: d.pausedUntil, pausedGroup: d.pausedGroup, confirmDecline: d.confirmDecline,
     photos: d.photos,
+    dragHint: d.dragHint, dropActive: d.dropActive, dropQuoted: d.dropQuoted,
     importedBanner: importedCount > 0 ? d.importedBanner.replace("{n}", String(importedCount)) : "",
   };
 

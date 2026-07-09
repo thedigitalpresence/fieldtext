@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   FileText, UserCheck, Briefcase, DollarSign, Bell, MessageCircle, Languages,
@@ -84,21 +85,46 @@ const AVATAR_HUES = [
 
 export default function DashboardClient(props: Props) {
   const L = props.labels;
+  const router = useRouter();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | ClientStatus>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showAllActivity, setShowAllActivity] = useState(false);
+  // Drag-to-move (desktop): optimistic status overrides + which column is hovered.
+  const [, startMove] = useTransition();
+  const [moved, setMoved] = useState<Record<string, ClientStatus>>({});
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dropCol, setDropCol] = useState<"quoted" | "active" | null>(null);
+
+  // Apply optimistic moves so a dragged card jumps columns instantly.
+  const clients = useMemo(
+    () => props.clients.map((c) => (moved[c.id] && moved[c.id] !== c.status ? { ...c, status: moved[c.id] } : c)),
+    [props.clients, moved]
+  );
+
+  function moveTo(id: string, status: "quoted" | "active") {
+    const c = clients.find((x) => x.id === id);
+    if (!c || c.status === status) return;
+    setMoved((m) => ({ ...m, [id]: status }));
+    const fd = new FormData();
+    fd.set("clientId", id);
+    fd.set("status", status);
+    startMove(async () => {
+      await markStatus(fd);
+      router.refresh();
+    });
+  }
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return props.clients.filter((c) => {
+    return clients.filter((c) => {
       if (filter !== "all" && c.status !== filter) return false;
       if (!q) return true;
       return c.name.toLowerCase().includes(q) || (c.address ?? "").toLowerCase().includes(q);
     });
-  }, [props.clients, query, filter]);
+  }, [clients, query, filter]);
 
-  const selected = props.clients.find((c) => c.id === selectedId) ?? null;
+  const selected = clients.find((c) => c.id === selectedId) ?? null;
   const activityShown = showAllActivity ? props.activity : props.activity.slice(0, 6);
 
   // Active clients grouped by service day, TODAY first, "no day set" then Paused last.
@@ -124,8 +150,11 @@ export default function DashboardClient(props: Props) {
   const clientCard = (c: ClientView, status: ClientStatus) => (
     <button
       key={c.id}
+      draggable
+      onDragStart={(e) => { setDragId(c.id); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", c.id); }}
+      onDragEnd={() => { setDragId(null); setDropCol(null); }}
       onClick={() => setSelectedId(c.id)}
-      className="flex w-full items-start gap-3 rounded-2xl border border-gray-100 bg-white p-3 text-left shadow-sm transition hover:border-brand/40 hover:shadow"
+      className={`flex w-full cursor-grab items-start gap-3 rounded-2xl border border-gray-100 bg-white p-3 text-left shadow-sm transition hover:border-brand/40 hover:shadow active:cursor-grabbing ${dragId === c.id ? "opacity-40" : ""}`}
     >
       <Avatar name={c.name} />
       <div className="min-w-0 flex-1">
@@ -333,21 +362,31 @@ export default function DashboardClient(props: Props) {
         </div>
       </section>
 
-      {/* Pipeline */}
+      {/* Pipeline — Quoted (left) → Active (right), the funnel. Drag a card between them. */}
       <section>
-        <h2 className="mb-3 text-base font-bold text-gray-900">{L.pipeline}</h2>
-        {/* Active first — it's the daily driver; Quoted second (desktop keeps two columns). */}
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <h2 className="text-base font-bold text-gray-900">{L.pipeline}</h2>
+          <span className="hidden text-xs text-gray-400 sm:inline">{L.dragHint}</span>
+        </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {(["active", "quoted"] as ("quoted" | "active")[]).map((status) => {
+          {(["quoted", "active"] as ("quoted" | "active")[]).map((status) => {
             const group = status === "active"
               ? filtered.filter((c) => c.status === "active" || c.status === "paused")
               : filtered.filter((c) => c.status === status);
             const tint = COLUMN_TINT[status];
+            const isDropTarget = dragId != null && dropCol === status;
             return (
-              <div key={status} className={`rounded-2xl border p-3 ${tint.panel}`}>
+              <div
+                key={status}
+                onDragOver={(e) => { if (dragId) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDropCol(status); } }}
+                onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDropCol((d) => (d === status ? null : d)); }}
+                onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData("text/plain") || dragId; if (id) moveTo(id, status); setDragId(null); setDropCol(null); }}
+                className={`rounded-2xl border p-3 transition ${tint.panel} ${isDropTarget ? "ring-2 ring-brand ring-offset-1" : ""}`}
+              >
                 <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-700">
                   <span className={`rounded-full px-2 py-0.5 text-xs ${tint.chip}`}>{L.status[status]}</span>
                   <span className="text-gray-500">({group.length})</span>
+                  {isDropTarget && <span className="ml-auto text-xs font-medium text-brand-dark">{status === "active" ? L.dropActive : L.dropQuoted}</span>}
                 </div>
                 <div className="space-y-2 pr-0.5 sm:max-h-[28rem] sm:overflow-y-auto sm:overscroll-contain">
                   {group.length === 0 ? (
