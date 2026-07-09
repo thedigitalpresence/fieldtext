@@ -844,8 +844,8 @@ function ReminderBtn({ id, action, title, children }: { id: string; action: stri
 function ReminderSubmit({ title, children }: { title: string; children: React.ReactNode }) {
   const { pending } = useFormStatus();
   return (
-    <button disabled={pending} title={title} aria-label={title} className={`${TAP} min-w-[44px] rounded-lg border border-gray-200 p-2 text-gray-500 hover:bg-gray-100 disabled:opacity-60`}>
-      {pending ? <Loader2 className="mx-auto h-4 w-4 animate-spin" /> : children}
+    <button disabled={pending} title={title} aria-label={title} className={`${TAP} flex min-w-[44px] items-center justify-center rounded-lg border border-gray-200 p-2 text-gray-500 hover:bg-gray-100 disabled:opacity-60`}>
+      {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : children}
     </button>
   );
 }
