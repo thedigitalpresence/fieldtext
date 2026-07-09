@@ -233,7 +233,7 @@ export function heuristicParse(text: string, ctx: ParseContext): ParseResult {
 }
 
 const CONJUNCTION =
-  /\b(?:and|then|also|y|luego|tambi[eé]n)\s+(?=(?:remind|remember|recu[eé]rda|set a reminder|quote|quoted|coti[a-zà-ÿ]*|mark|update|collect|collected|got paid|paid|cobr[eé]|recib[ií]|pag|mow|mowed|cut|trim|clean|cleanup|cort[eé]|pod[eé]|limpi[eé]|hice|did)\b)/i;
+  /\b(?:and|then|also|y|luego|tambi[eé]n)\s+(?=(?:(?:they|he|she|i|we|it)\s+)?(?:remind|remember|recu[eé]rda|set a reminder|quote|quoted|quoting|coti[a-zà-ÿ]*|mark|update|collect|collected|got|gave|paid|owes?|cobr[eé]|recib[ií]|pag|mow|cut|trim|clean|cort[eé]|pod[eé]|limpi[eé]|hice|did|need|don'?t)\b)/i;
 const OBLIGATION = /\b((?:need|needs|have|has|got)\s+to\s+.+|gotta\s+.+|don'?t\s+forget\s+.+|remember\s+to\s+.+|remind\s+me\s+.+)$/i;
 const HAS_TIME = /\b(today|tonight|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday|next week|in \d+ days?|ma[ñn]ana|hoy|lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo|pr[oó]xima semana|en \d+ d[ií]as?)\b/i;
 function splitClauses(text: string): string[] {
@@ -297,15 +297,17 @@ function parseClause(text: string, _ctx: ParseContext): Record<string, any> | nu
     return { intent: "reschedule_visit", confidence: 0.6, client_name: cleanName(moveM[1]), target_date: moveM[2] };
   }
 
-  // Expense — money OUT ("spent 84 on mulch at home depot")
-  if (/\b(spent|gast[eé]|bought|compr[eé])\b/i.test(lower)) {
-    const desc = t.replace(/^.*?\b(?:spent|gast[eé]|bought|compr[eé])\b\s*/i, "").replace(/^\$?[\d.,]+\s*(?:on|en|de)?\s*/i, "");
+  // Expense — money OUT ("spent 84 on mulch", "gassed up the truck 65", "bought a blade 45")
+  if (/\b(spent|gast[eé]|bought|compr[eé]|gassed up|gassed|filled up|fill up|fuel|paid the (?:supplier|dump|crew))\b/i.test(lower)) {
+    const desc = t.replace(/^.*?\b(?:spent|gast[eé]|bought|compr[eé]|gassed up|gassed|filled up|fill up|on)\b\s*/i, "").replace(/^\$?[\d.,]+\s*(?:on|en|de|for)?\s*/i, "");
     return { intent: "log_expense", confidence: 0.6, amount: t, expense_category: t, note_text: desc };
   }
 
-  // Site notes ("note for the wilsons: big backyard, steep slope" — client may not exist yet)
+  // Site notes ("note for the wilsons: big backyard" — colon OR just a trailing phrase)
   const noteM = t.match(/^notes?\s+(?:for|on|about)?\s*(?:the |los |las |el |la )?([a-zà-ÿ][a-zà-ÿ .'’-]+?)\s*[:,-]\s*(.+)$/i);
   if (noteM) return { intent: "update_client_info", confidence: 0.65, client_name: cleanName(noteM[1]), note_text: noteM[2].trim() };
+  const noteM2 = t.match(/^notes?\s+(?:for|on|about)\s+(?:the |los |las |el |la )?([a-zà-ÿ']+)\s+(.+)$/i);
+  if (noteM2 && !/\b(number|phone|cell|referred)\b/i.test(t)) return { intent: "update_client_info", confidence: 0.6, client_name: cleanName(noteM2[1]), note_text: noteM2[2].trim() };
 
   // Client info ("angela's number is 555-0142", "gate code 4412 at the smiths", "jones referred by bob")
   const phoneM = t.match(/^(?:the |los |las |el |la )?([a-zà-ÿ][a-zà-ÿ .'’-]+?)(?:'s)?\s+(?:number|phone|cell|tel[eé]fono)\s+(?:is|es)?\s*([+()\d][\d\s().-]{6,})/i);
@@ -333,27 +335,33 @@ function parseClause(text: string, _ctx: ParseContext): Record<string, any> | nu
 
   // Reminder — incl. obligations ("need to send quote tomorrow") when a time is present
   const isObligation = /\b(need|needs|have|has|got)\s+to\b|gotta|don'?t\s+forget/i.test(lower) && HAS_TIME.test(lower);
-  if (/\b(remind me|remember to|follow up with|recu[eé]rdame|recordarme|dar seguimiento)/i.test(lower) || isObligation) {
+  if (/\b(remind me|remember to|follow up with|ping me|don'?t let me forget|dont let me forget|recu[eé]rdame|recordarme|dar seguimiento)/i.test(lower) || isObligation) {
     let body = t
-      .replace(/^.*?(remind me to|remind me|remember to|recu[eé]rdame que|recu[eé]rdame|recordarme|need to|needs to|have to|has to|got to|gotta|don'?t forget to|don'?t forget)\s*/i, "")
+      .replace(/^.*?(remind me to|remind me|remember to|ping me about|ping me to|ping me|don'?t let me forget to|don'?t let me forget|recu[eé]rdame que|recu[eé]rdame|recordarme|need to|needs to|have to|has to|got to|gotta|don'?t forget to|don'?t forget)\s*/i, "")
       .replace(/^.*?(follow up with|dar seguimiento a)/i, (m) => m);
     body = body.replace(/\b(today|tomorrow|next week|in \d+ days?|on \w+|this \w+|el \w+|ma[ñn]ana|hoy|pr[oó]xima semana|en \d+ d[ií]as?|lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b.*$/i, "").trim();
     return { intent: "set_reminder", confidence: 0.6, reminder_text: body || t, due_at: t };
   }
 
-  // Payment (incl. owes / unpaid)
-  if (/\b(collected|got paid|paid|payment|received|venmo(ed|'d)?|zelled?|owe|owes|unpaid|overdue|cobr[eé]|recib[ií]|me pag|pag[oó]|deben?|atrasad)\b/i.test(lower)) {
-    const fromM = t.match(/\b(?:from|a|de)\s+(?:los |las |el |la )?([a-zà-ÿ][a-zà-ÿ .'’-]+)/i);
-    const owesM = t.match(/^([a-zà-ÿ][a-zà-ÿ .'’-]+?)\s+(?:owes?|still owes|deben?|no ha pagado|hasn'?t paid)/i);
-    // Leading-name form: "the smiths paid 200", "bob venmoed 300"
-    const leadM = t.match(/^(?:the |los |las |el |la )?([a-zà-ÿ][a-zà-ÿ .'’-]+?)\s+(?:paid|pag[oó]|venmo(?:ed|'d)?|zelled)\b/i);
-    const name = fromM?.[1] ?? owesM?.[1] ?? (leadM && !/^(got|collected|received|me)$/i.test(leadM[1].trim()) ? (t.match(/^the /i) ? `the ${leadM[1]}` : leadM[1]) : undefined);
+  // Payment (incl. owes / unpaid, "gave me", "got X from Y")
+  const isPayment = /\b(collected|got paid|paid|payment|received|venmo(ed|'d)?|zelled?|owe|owes|unpaid|overdue|gave me|cobr[eé]|recib[ií]|me pag|pag[oó]|deben?|atrasad)\b/i.test(lower)
+    || (/\bgot\b/i.test(lower) && /\bfrom\b/i.test(lower) && /\d/.test(lower));
+  if (isPayment) {
+    const fromM = t.match(/\b(?:from|de|cobr[eé] a)\s+(?:los |las |el |la )?([a-zà-ÿ][a-zà-ÿ .'’-]+)/i);
+    const owesM = t.match(/^([a-zà-ÿ][a-zà-ÿ .'’-]+?)\s+(?:owes?|still owes|deben?|no ha pagado|hasn'?t paid|gave me)/i);
+    // Leading-name form: "the smiths paid 200", "bob venmoed 300", "bob gave me 200"
+    const leadM = t.match(/^(?:the |los |las |el |la )?([a-zà-ÿ][a-zà-ÿ .'’-]+?)\s+(?:paid|pag[oó]|venmo(?:ed|'d)?|zelled|gave)\b/i);
+    const name = fromM?.[1] ?? owesM?.[1] ?? (leadM && !/^(got|collected|received|me|i)$/i.test(leadM[1].trim()) ? (t.match(/^the /i) ? `the ${leadM[1]}` : leadM[1]) : undefined);
     return { intent: "log_payment", confidence: 0.6, amount: t, client_name: cleanName(name), paid_on: t, payment_status: t, payment_method: t };
   }
 
-  // Quote — incl. "new job/client <name> ... $X a week" (a new engagement, not a work log)
+  // Quote — incl. alt phrasings ("gave X a price of Y", "bid X at Y", "estimate for X")
   if (/\b(quote|quoted|quoting|coti[a-zà-ÿ]*)/i.test(lower)) {
     return { ...parseQuote(t), ...extractSchedule(t), intent: "log_quote", confidence: 0.6 };
+  }
+  const altQuote = canonicalizeQuote(t);
+  if (altQuote) {
+    return { ...parseQuoteBody(altQuote), ...extractSchedule(t), intent: "log_quote", confidence: 0.6 };
   }
   const newJobM = t.match(/^new (?:job|client|account|customer)[:,]?\s+(.+)$/i);
   if (newJobM) {
@@ -379,9 +387,10 @@ function parseClause(text: string, _ctx: ParseContext): Record<string, any> | nu
     return { ...parseQuote("quoted " + newJobM[1]), ...extractSchedule(t), intent: "log_quote", status: "active", confidence: 0.6 };
   }
 
-  // Status change (plain language) — must not collide with job verbs
-  const looksJob = /\b(mowed|mow|cleanup|clean up|trim|cut|aerat|fertiliz|edg|blew|blow|plant|mulch|did|cort[eé]|pod[eé]|limpi[eé]|hice)\b/i.test(lower);
-  if (!looksJob && /\b(accepted|said yes|are in|is in|signed|declined|said no|lost|dijo que s[ií]|empieza|perdimos|perd[ií]|rechaz|acept)/i.test(lower)) {
+  // Status change (plain language) — must not collide with job verbs.
+  // Prefix match so inflections count: "mowing", "trimmed", "aerated", "edging".
+  const looksJob = /\b(mow|clean|trim|cut|aerat|fertiliz|edg|blew|blow|plant|mulch|weed|prun|hedg|rake|dethatch|scalp|cort|pod|limpi|hice)\w*/i.test(lower) || /\bdid\b/i.test(lower);
+  if (!looksJob && /\b(accepted|said yes|says yes|are in|is in|signed|booked|declined|said no|lost|went with|going with|chose (?:someone|another)|someone else|dijo que s[ií]|empieza|perdimos|perd[ií]|rechaz|acept)/i.test(lower)) {
     const nameM = t.match(/^(?:mark\s+|lost the\s+|perdimos (?:el|la|a)\s+)?([a-zà-ÿ][a-zà-ÿ .'’-]+?)\b/i);
     return { intent: "update_status", confidence: 0.55, status: t, client_name: cleanName(nameM?.[1]), ...extractSchedule(t) };
   }
@@ -402,10 +411,30 @@ function parseClause(text: string, _ctx: ParseContext): Record<string, any> | nu
   return { intent: "help", confidence: 0.2 };
 }
 
+/** Rewrite alternate quote phrasings into a keyword-stripped body, or null. */
+function canonicalizeQuote(t: string): string | null {
+  let m;
+  // "gave the wilsons a price of 250 a month" -> "the wilsons 250 a month"
+  if ((m = t.match(/\bgave\s+(?:the |los |las |el |la )?(.+?)\s+(?:an?\s+)?(?:price|quote|estimate|bid)\s+(?:of\s+)?(.+)/i))) return `${m[1]} ${m[2]}`;
+  // "bid the taylor retaining wall at 4000" -> "taylor retaining wall 4000"
+  if ((m = t.match(/^\s*bid\s+(?:the |on )?(.+?)\s+(?:at|for)\s+(.+)/i))) return `${m[1]} ${m[2]}`;
+  // "estimate for dave 200 monthly mowing" -> "dave 200 monthly mowing"
+  if ((m = t.match(/^\s*estimate[d]?\s+(?:for\s+)?(.+)/i))) return m[1];
+  // "priced the greens at 180/mo" -> "the greens 180/mo"
+  if ((m = t.match(/^\s*priced\s+(?:the |los |las |el |la )?(.+?)\s+(?:at|for)\s+(.+)/i))) return `${m[1]} ${m[2]}`;
+  return null;
+}
+
 /** Pull name/address/amount/period/service out of a quote clause (EN + ES). */
 function parseQuote(text: string): Record<string, any> {
   // Strip the quote keyword and a leading ES preposition ("a", "a los").
-  let s = text.replace(/^.*?(quoted|quoting|quote|coti[a-zà-ÿ]*)\s*/i, "").replace(/^(a los|a las|a la|a el|al|a|to)\s+/i, "");
+  const s = text.replace(/^.*?(quoted|quoting|quote|coti[a-zà-ÿ]*)\s*/i, "").replace(/^(a los|a las|a la|a el|al|a|to)\s+/i, "");
+  return parseQuoteBody(s);
+}
+
+/** Parse an already-keyword-stripped quote body: "name at addr for $amt service". */
+function parseQuoteBody(body: string): Record<string, any> {
+  let s = body.replace(/^(a los|a las|a la|a el|al|a|to)\s+/i, "");
 
   // Find the price: a number tied to a period word ("500 a month", "$500/mo", "$500 al mes"),
   // or — for one-time quotes — a $-prefixed amount with no period ("$350 for cleanup").
@@ -459,7 +488,7 @@ function parseQuote(text: string): Record<string, any> {
     client_name: cleanName(name),
     address: address || undefined,
     amount,
-    billing_period: oneTime ? "one_time" : text,
+    billing_period: oneTime ? "one_time" : body,
     service_description: service || undefined,
   };
 }
