@@ -7,11 +7,12 @@ import Link from "next/link";
 import {
   FileText, UserCheck, Briefcase, DollarSign, Bell, MessageCircle, Languages,
   CalendarClock, Search, X, Check, Clock, Ban, Upload, Sun, Leaf, TrendingUp, AlertCircle,
-  Download, Loader2, ChevronRight, Phone, PauseCircle,
+  Download, Loader2, ChevronRight, Phone, PauseCircle, Pencil,
 } from "lucide-react";
 import type { ClientStatus, Lang } from "@/lib/types";
 import {
   logout, setLanguage, markStatus, addNote, addReminderAction, logPayment, reminderAction,
+  editClient, settleBalance, voidBalance,
 } from "./actions";
 
 const STATUS_COLOR: Record<ClientStatus, string> = {
@@ -28,7 +29,8 @@ const ACTIVITY_ICON: Record<string, typeof FileText> = {
 
 type ClientView = {
   id: string; name: string; address: string | null; status: ClientStatus;
-  amountStr: string; periodStr: string; service: string | null; notes: string | null;
+  amountStr: string; amountRaw: number | null; billingPeriod: string | null;
+  periodStr: string; service: string | null; notes: string | null;
   phone: string | null; email: string | null;
   sentStr: string; sinceStr: string; nextStr: string | null;
   scheduleStr: string | null; nextServiceStr: string | null; serviceDay: string | null;
@@ -126,7 +128,7 @@ export default function DashboardClient(props: Props) {
   }, [clients, query, filter]);
 
   const selected = clients.find((c) => c.id === selectedId) ?? null;
-  const activityShown = showAllActivity ? props.activity : props.activity.slice(0, 6);
+  const activityShown = showAllActivity ? props.activity : props.activity.slice(0, 3);
 
   // Active clients grouped by service day, TODAY first, "no day set" then Paused last.
   const activeByDay = (list: ClientView[]) => {
@@ -423,18 +425,25 @@ export default function DashboardClient(props: Props) {
           </h2>
           <div className="divide-y divide-gray-50 rounded-2xl border border-red-100 bg-white shadow-sm">
             {props.outstanding.map((o, i) => (
-              <button
-                key={`${o.clientId ?? "x"}-${i}`}
-                onClick={() => o.clientId && setSelectedId(o.clientId)}
-                disabled={!o.clientId}
-                className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left enabled:hover:bg-red-50/40"
-              >
-                <span className="min-w-0">
+              <div key={`${o.clientId ?? "x"}-${i}`} className="flex items-center justify-between gap-2 px-4 py-3">
+                <button
+                  onClick={() => o.clientId && setSelectedId(o.clientId)}
+                  disabled={!o.clientId}
+                  className="min-w-0 flex-1 text-left enabled:hover:opacity-70"
+                >
                   <span className="block truncate font-semibold text-gray-900">{o.name}</span>
                   <span className="block text-xs text-gray-500">{L.owedSince} {o.dueStr}</span>
-                </span>
+                </button>
                 <span className="shrink-0 font-bold tabular-nums text-red-600">{o.amountStr}</span>
-              </button>
+                <form action={settleBalance}>
+                  <input type="hidden" name="clientId" value={o.clientId ?? "unassigned"} />
+                  <ReminderSubmit title={L.markPaid}><Check className="h-4 w-4 text-brand" /></ReminderSubmit>
+                </form>
+                <form action={voidBalance} onSubmit={(e) => { if (!window.confirm(L.confirmVoid)) e.preventDefault(); }}>
+                  <input type="hidden" name="clientId" value={o.clientId ?? "unassigned"} />
+                  <ReminderSubmit title={L.deleteEntry}><X className="h-4 w-4 text-gray-400" /></ReminderSubmit>
+                </form>
+              </div>
             ))}
           </div>
         </section>
@@ -476,7 +485,7 @@ export default function DashboardClient(props: Props) {
       <section>
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-base font-bold text-gray-900">{L.recentActivity}</h2>
-          {props.activity.length > 6 && (
+          {props.activity.length > 3 && (
             <button onClick={() => setShowAllActivity((v) => !v)} className={`${TAP} px-2 text-sm font-medium text-brand-dark`}>
               {showAllActivity ? L.seeLess : L.seeAll}
             </button>
@@ -534,6 +543,8 @@ function ClientDetail({
   client: ClientView; labels: Record<string, any>; jobs: JobView[]; payments: PayView[]; reminders: RemView[];
   photos: { id: string; url: string; caption: string | null }[]; onClose: () => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  useEffect(() => { setEditing(false); }, [client.id]); // reset when switching clients
   // Drawer manners: Escape closes, the page behind stops scrolling.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -558,28 +569,54 @@ function ClientDetail({
               <span className={`mt-0.5 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLOR[client.status]}`}>{L.status[client.status]}</span>
             </div>
           </div>
-          <button autoFocus onClick={onClose} aria-label={L.close} className={`${TAP} min-w-[44px] shrink-0 rounded-lg p-2 text-gray-500 hover:bg-gray-100`}><X className="mx-auto h-5 w-5" /></button>
+          <div className="flex shrink-0 items-center gap-1">
+            <button onClick={() => setEditing((v) => !v)} aria-label={L.editClient} title={L.editClient} className={`${TAP} min-w-[44px] rounded-lg p-2 ${editing ? "bg-brand/10 text-brand-dark" : "text-gray-500 hover:bg-gray-100"}`}><Pencil className="mx-auto h-4 w-4" /></button>
+            <button autoFocus onClick={onClose} aria-label={L.close} className={`${TAP} min-w-[44px] rounded-lg p-2 text-gray-500 hover:bg-gray-100`}><X className="mx-auto h-5 w-5" /></button>
+          </div>
         </div>
 
         <div className="space-y-5 p-4">
-          {/* Facts */}
-          <dl className="space-y-2 rounded-xl border border-gray-100 bg-white p-4 text-sm shadow-sm">
-            <Fact label={L.address} value={client.address || "—"} />
-            {client.phone && (
-              <div className="flex items-start justify-between gap-3">
-                <dt className="text-gray-500">{L.phoneLabel}</dt>
-                <dd className="text-right font-medium">
-                  <a href={`tel:${client.phone}`} className="inline-flex items-center gap-1 text-brand-dark underline"><Phone className="h-3.5 w-3.5" />{client.phone}</a>
-                </dd>
+          {/* Facts / Edit form */}
+          {editing ? (
+            <form action={editClient} onSubmit={() => setEditing(false)} className="space-y-2 rounded-xl border border-brand/30 bg-white p-4 shadow-sm">
+              <input type="hidden" name="clientId" value={client.id} />
+              <EditField name="name" label={L.colName} defaultValue={client.name} />
+              <EditField name="address" label={L.address} defaultValue={client.address ?? ""} />
+              <EditField name="phone" label={L.phoneLabel} defaultValue={client.phone ?? ""} type="tel" />
+              <div className="flex gap-2">
+                <EditField name="amount" label={L.amount} defaultValue={client.amountRaw != null ? String(client.amountRaw) : ""} numeric />
+                <label className="flex-1 text-xs">
+                  <span className="mb-1 block font-medium text-gray-500">{L.colPeriod}</span>
+                  <select name="billing_period" defaultValue={client.billingPeriod ?? ""} className="w-full rounded-lg border border-gray-200 px-2 py-2 text-sm text-gray-700 focus:border-brand focus:outline-none">
+                    {["", "monthly", "weekly", "biweekly", "one_time"].map((p) => <option key={p} value={p}>{p || "—"}</option>)}
+                  </select>
+                </label>
               </div>
-            )}
-            {client.email && <Fact label={L.emailLabel} value={client.email} />}
-            <Fact label={L.amount} value={client.amountStr === "—" ? "—" : `${client.amountStr}${client.periodStr}`} />
-            <Fact label={L.service} value={client.service || "—"} />
-            {client.scheduleStr && <Fact label={L.schedule} value={client.scheduleStr} />}
-            {client.nextServiceStr && <Fact label={L.nextService} value={client.nextServiceStr} />}
-            {client.pausedUntilStr && <Fact label={L.pausedUntil} value={client.pausedUntilStr} />}
-          </dl>
+              <EditField name="service" label={L.service} defaultValue={client.service ?? ""} />
+              <div className="flex gap-2 pt-1">
+                <ActionSubmit label={L.save} primary />
+                <button type="button" onClick={() => setEditing(false)} className={`${TAP} rounded-lg border border-gray-300 px-4 text-sm font-medium text-gray-700 hover:bg-gray-100`}>{L.cancel}</button>
+              </div>
+            </form>
+          ) : (
+            <dl className="space-y-2 rounded-xl border border-gray-100 bg-white p-4 text-sm shadow-sm">
+              <Fact label={L.address} value={client.address || "—"} />
+              {client.phone && (
+                <div className="flex items-start justify-between gap-3">
+                  <dt className="text-gray-500">{L.phoneLabel}</dt>
+                  <dd className="text-right font-medium">
+                    <a href={`tel:${client.phone}`} className="inline-flex items-center gap-1 text-brand-dark underline"><Phone className="h-3.5 w-3.5" />{client.phone}</a>
+                  </dd>
+                </div>
+              )}
+              {client.email && <Fact label={L.emailLabel} value={client.email} />}
+              <Fact label={L.amount} value={client.amountStr === "—" ? "—" : `${client.amountStr}${client.periodStr}`} />
+              <Fact label={L.service} value={client.service || "—"} />
+              {client.scheduleStr && <Fact label={L.schedule} value={client.scheduleStr} />}
+              {client.nextServiceStr && <Fact label={L.nextService} value={client.nextServiceStr} />}
+              {client.pausedUntilStr && <Fact label={L.pausedUntil} value={client.pausedUntilStr} />}
+            </dl>
+          )}
 
           {/* Quick actions */}
           <div className="grid grid-cols-2 gap-2">
@@ -712,6 +749,20 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
       <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">{title}</h4>
       <div className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm">{children}</div>
     </div>
+  );
+}
+function EditField({ name, label, defaultValue, type, numeric }: { name: string; label: string; defaultValue: string; type?: string; numeric?: boolean }) {
+  return (
+    <label className="block text-xs">
+      <span className="mb-1 block font-medium text-gray-500">{label}</span>
+      <input
+        name={name}
+        type={type ?? "text"}
+        inputMode={numeric ? "decimal" : undefined}
+        defaultValue={defaultValue}
+        className="w-full rounded-lg border border-gray-200 px-2 py-2 text-sm focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
+      />
+    </label>
   );
 }
 function Fact({ label, value }: { label: string; value: string }) {

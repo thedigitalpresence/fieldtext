@@ -7,8 +7,8 @@ import { config } from "@/lib/config";
 import { AUTH_COOKIE } from "@/middleware";
 import { db, getBusiness } from "@/lib/supabase";
 import { createReminder, cancelQuoteReminders } from "@/lib/reminders";
-import { normalizeAmount } from "@/lib/normalize";
-import type { ClientStatus, Lang } from "@/lib/types";
+import { normalizeAmount, normalizeName, normalizeAddress } from "@/lib/normalize";
+import type { ChargeStatus, ClientStatus, Lang } from "@/lib/types";
 
 export async function login(formData: FormData) {
   const password = String(formData.get("password") ?? "");
@@ -79,6 +79,55 @@ export async function logPayment(formData: FormData) {
   if (amount == null) return;
   const b = await getBusiness();
   await db().from("payments").insert({ business_id: b.id, client_id: clientId, amount, paid_on: new Date().toISOString().slice(0, 10) });
+  revalidatePath("/dashboard");
+}
+
+/** Edit a client's core fields from the dashboard. Empty text field = cleared. */
+export async function editClient(formData: FormData) {
+  const clientId = String(formData.get("clientId"));
+  const b = await getBusiness();
+  const val = (k: string) => { const v = formData.get(k); return v == null ? "" : String(v).trim(); };
+  const amtRaw = val("amount");
+  const patch: Record<string, unknown> = {
+    name: normalizeName(val("name")) ?? undefined,
+    address: val("address") ? normalizeAddress(val("address")) : null,
+    phone: val("phone") || null,
+    service_description: val("service") || null,
+    amount: amtRaw ? normalizeAmount(amtRaw) ?? null : null,
+    billing_period: val("billing_period") || null,
+    updated_at: new Date().toISOString(),
+  };
+  if (!patch.name) delete patch.name; // never blank the name
+  await db().from("clients").update(patch).eq("id", clientId).eq("business_id", b.id);
+  revalidatePath("/dashboard");
+}
+
+/** Every open charge for a client (or the "unassigned" bucket). */
+async function openChargesFor(businessId: string, clientKey: string) {
+  const { data } = await db().from("charges").select("*").eq("business_id", businessId).in("status", ["open", "partial"]);
+  return ((data ?? []) as { id: string; client_id: string | null; amount: number; paid_amount: number; status: ChargeStatus }[])
+    .filter((c) => (c.client_id ?? "unassigned") === clientKey);
+}
+
+/** "They paid" — record the payment for the balance and mark the charges settled. */
+export async function settleBalance(formData: FormData) {
+  const clientKey = String(formData.get("clientId"));
+  const b = await getBusiness();
+  const rows = await openChargesFor(b.id, clientKey);
+  const balance = rows.reduce((s, c) => s + Number(c.amount) - Number(c.paid_amount), 0);
+  if (balance <= 0) return;
+  const realId = clientKey === "unassigned" ? null : clientKey;
+  await db().from("payments").insert({ business_id: b.id, client_id: realId, amount: balance, paid_on: new Date().toISOString().slice(0, 10), status: "paid" });
+  for (const c of rows) await db().from("charges").update({ paid_amount: c.amount, status: "paid" }).eq("id", c.id);
+  revalidatePath("/dashboard");
+}
+
+/** "They don't actually owe this" — void the open charges, no payment recorded. */
+export async function voidBalance(formData: FormData) {
+  const clientKey = String(formData.get("clientId"));
+  const b = await getBusiness();
+  const rows = await openChargesFor(b.id, clientKey);
+  for (const c of rows) await db().from("charges").update({ status: "void" }).eq("id", c.id);
   revalidatePath("/dashboard");
 }
 

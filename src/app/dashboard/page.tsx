@@ -137,6 +137,7 @@ export default async function DashboardPage({ searchParams }: { searchParams?: {
       return {
         id: c.id, name: c.name, address: c.address, status: c.status,
         amountStr: c.amount != null ? money(c.amount) : "—",
+        amountRaw: c.amount, billingPeriod: c.billing_period,
         periodStr: periodLabel(c.billing_period, lang),
         service: c.service_description, notes: c.notes,
         phone: c.phone ?? null, email: c.email ?? null,
@@ -231,6 +232,8 @@ export default async function DashboardPage({ searchParams }: { searchParams?: {
     photos: d.photos,
     dragHint: d.dragHint, dropActive: d.dropActive, dropQuoted: d.dropQuoted,
     moneyOwed: d.moneyOwed, owedSince: d.owedSince,
+    edit: d.edit, markPaid: d.markPaid, deleteEntry: d.deleteEntry,
+    confirmVoid: d.confirmVoid, editClient: d.editClientLabel, colEmail: d.emailLabel,
     importedBanner: importedCount > 0 ? d.importedBanner.replace("{n}", String(importedCount)) : "",
   };
 

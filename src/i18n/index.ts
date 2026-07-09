@@ -123,6 +123,11 @@ const en = {
   dropQuoted: "Drop to move to Quoted",
   moneyOwed: "Money owed",
   owedSince: "since",
+  edit: "Edit",
+  markPaid: "Mark paid",
+  deleteEntry: "Delete",
+  confirmVoid: "Clear this balance? (they no longer owe it)",
+  editClientLabel: "Edit details",
 };
 
 const es: Dict = {
@@ -232,6 +237,11 @@ const es: Dict = {
   dropQuoted: "Suelta para marcar Cotizado",
   moneyOwed: "Dinero pendiente",
   owedSince: "desde",
+  edit: "Editar",
+  markPaid: "Marcar pagado",
+  deleteEntry: "Borrar",
+  confirmVoid: "¿Borrar este saldo? (ya no lo deben)",
+  editClientLabel: "Editar datos",
 };
 
 const DICTS: Record<Lang, Dict> = { en, es };
