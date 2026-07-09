@@ -105,17 +105,28 @@ Twilio Console → your number → **Messaging → "A message comes in"** → **
 ---
 
 ## Production hardening already in place
-- **Idempotent webhook** — Twilio retries are deduped by `MessageSid` (no double-logging).
-- **STOP / START** opt-out handling (EN + ES), with proactive sends skipped while opted out.
-- **Health check** at `/api/health`.
-- **Twilio signature verification** on the inbound webhook (`TWILIO_VALIDATE_SIGNATURE`,
-  on by default — needs `NEXT_PUBLIC_APP_URL` set to the real domain).
+- **Idempotent webhook**: Twilio retries deduped by `MessageSid`.
+- **STOP / START** opt-out handling (EN + ES), proactive sends skipped while opted out.
+- **Signed session cookies** (HMAC): the password is never stored in the cookie.
+- **Hashed passwords** (scrypt): dashboard passwords are salted-hashed, never plaintext.
+- **Login rate-limiting**: 5 failed attempts locks that number for 15 min (`auth_throttle`).
+- **Failure alerts**: the founder gets a text if the webhook or cron job throws
+  (`FOUNDER_ALERT_PHONE`, falls back to `OWNER_PHONE`).
+- **Automated backups**: `POST /api/cron/backup` snapshots every table to the private
+  `backups` Storage bucket (keeps the last 8). Point a WEEKLY cron-job.org job at it with
+  the `x-cron-secret` header. For full disaster recovery, also enable Supabase Pro PITR.
+- **Twilio signature verification** on the inbound webhook (ignored/forced-on in prod).
 - Authorized-phone gate, RLS on every table, secrets in env only.
 
-## Onboarding a second landscaper (when the pilot works)
-No new number, no new A2P. Insert a `businesses` row + an `authorized_phones` row with
-their cell. They text the same shared number; routing is by sender. (Real auth and a
-self-serve signup come later — this is the single-tenant-per-row MVP.)
+## Set spend caps (console-side, 5 min each — do before wider launch)
+- **Twilio**: Console → Billing → set a monthly spend alert/trigger (~\$20).
+- **Anthropic**: Console → Settings → Limits → monthly workspace spend limit.
+
+## Onboarding another operator
+No new number, no new A2P. Either: (a) admin registers them at `/dashboard/admin`, or
+(b) they self-register at `/signup` (written consent) and activate by texting the number
+(mobile-originated opt-in = double opt-in). Each gets an isolated business; texts route by
+sender. Operators sign in at `/dashboard` with their mobile number + password.
 
 ## Rough monthly cost
 Fixed platform ~\$40–50 (Vercel Pro, Supabase, A2P, one number). Marginal per client

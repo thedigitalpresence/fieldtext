@@ -26,7 +26,8 @@ type Table =
   | "expenses"
   | "signups"
   | "invoices"
-  | "attachments";
+  | "attachments"
+  | "auth_throttle";
 type Store = Record<Table, Row[]>;
 
 const FILE = path.join(process.cwd(), ".fieldtext-test-db.json");
@@ -77,6 +78,7 @@ function seed(): Store {
     signups: [],
     invoices: [],
     attachments: [],
+    auth_throttle: [],
   };
 }
 
@@ -85,7 +87,7 @@ function load(): Store {
     if (fs.existsSync(FILE)) {
       const store = JSON.parse(fs.readFileSync(FILE, "utf8")) as Store;
       // Backfill tables added after the file was created (schema evolution).
-      for (const t of ["charges", "expenses", "signups", "invoices", "attachments"] as Table[]) {
+      for (const t of ["charges", "expenses", "signups", "invoices", "attachments", "auth_throttle"] as Table[]) {
         if (!Array.isArray(store[t])) store[t] = [];
       }
       return store;

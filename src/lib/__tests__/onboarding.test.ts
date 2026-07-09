@@ -21,8 +21,9 @@ async function fresh() {
   await db().from("businesses").select("*"); // trigger seed
 }
 async function pendingSignup(phone: string, lang: string, name = "Miguel Torres", biz = "Torres Lawn Care", password = "secret123") {
+  const { hashPassword } = await import("../password");
   await db().from("signups").insert({
-    name, business_name: biz, phone, language: lang, status: "pending", dashboard_password: password,
+    name, business_name: biz, phone, language: lang, status: "pending", dashboard_password: hashPassword(password),
     consent_text: "I agree to receive SMS…", consented_at: new Date().toISOString(), ip: "1.2.3.4",
   });
 }
@@ -52,8 +53,10 @@ test("consented signup self-activates on first text (double opt-in), Spanish", a
   assert.equal((signup as any).status, "activated");
   assert.ok((signup as any).activated_at, "activation timestamped (consent audit trail)");
   assert.equal((signup as any).business_id, (biz as any).id, "signup linked to its business");
-  // The chosen password carried onto the business, so they can sign in (phone + password).
-  assert.equal((biz as any).dashboard_password, "secret123", "dashboard password set for web login");
+  // The chosen password carried onto the business (hashed), so phone + password sign-in works.
+  const { verifyPassword, isHashed } = await import("../password");
+  assert.ok(isHashed((biz as any).dashboard_password), "password stored hashed, not plaintext");
+  assert.ok(verifyPassword("secret123", (biz as any).dashboard_password), "the chosen password verifies");
 });
 
 test("two self-registered operators stay fully isolated", async () => {

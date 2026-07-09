@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { db } from "@/lib/supabase";
 import { sendSms } from "@/lib/twilio";
 import { toE164 } from "@/lib/phone";
+import { hashPassword } from "@/lib/password";
 
 // The exact consent sentence shown next to the checkbox — stored verbatim as
 // proof-of-consent (what carriers ask for in an A2P dispute). This is the
@@ -37,7 +38,7 @@ export async function submitSignup(_prev: SignupResult | null, formData: FormDat
 
   const { error } = await db().from("signups").insert({
     name, business_name: business, phone, language,
-    dashboard_password: dashboardPassword,
+    dashboard_password: hashPassword(dashboardPassword), // stored hashed; carried to the business on activation
     status: "pending",
     consent_text: CONSENT_TEXT,
     consented_at: new Date().toISOString(),

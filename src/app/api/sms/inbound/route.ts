@@ -52,6 +52,8 @@ export async function POST(req: NextRequest) {
     return new NextResponse(outcome.twiml, { status: 200, headers: XML_HEADERS });
   } catch (err) {
     console.error("[api/sms/inbound] error:", err);
+    const { alertFounder } = await import("@/lib/security");
+    await alertFounder("inbound", `a text failed to process (${String((err as Error)?.message ?? err).slice(0, 120)})`);
     return new NextResponse(
       '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
       { status: 200, headers: XML_HEADERS }

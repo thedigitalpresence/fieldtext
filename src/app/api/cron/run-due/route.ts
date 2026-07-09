@@ -22,8 +22,15 @@ function authorized(req: NextRequest): boolean {
 
 async function run(req: NextRequest) {
   if (!authorized(req)) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-  const summary = await runAllDue();
-  return NextResponse.json({ ok: true, ...summary });
+  try {
+    const summary = await runAllDue();
+    return NextResponse.json({ ok: true, ...summary });
+  } catch (err) {
+    console.error("[cron/run-due] error:", err);
+    const { alertFounder } = await import("@/lib/security");
+    await alertFounder("cron", `the reminder job failed (${String((err as Error)?.message ?? err).slice(0, 120)})`);
+    return NextResponse.json({ ok: false, error: "run failed" }, { status: 500 });
+  }
 }
 
 export async function GET(req: NextRequest) { return run(req); }

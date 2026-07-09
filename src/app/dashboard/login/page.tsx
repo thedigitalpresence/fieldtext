@@ -5,7 +5,7 @@ import { businessLang } from "@/lib/templates";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Sign in" };
 
-export default async function LoginPage({ searchParams }: { searchParams: { error?: string; next?: string } }) {
+export default async function LoginPage({ searchParams }: { searchParams: { error?: string; next?: string; mins?: string } }) {
   // Localize the one pre-auth page too (the rest of the product is bilingual).
   let es = false;
   try {
@@ -19,6 +19,9 @@ export default async function LoginPage({ searchParams }: { searchParams: { erro
     phone: es ? "Número de teléfono" : "Mobile number",
     password: es ? "Contraseña" : "Password",
     error: es ? "Número o contraseña incorrectos." : "Wrong number or password.",
+    locked: es
+      ? `Demasiados intentos. Espera ${searchParams.mins ?? "15"} minutos.`
+      : `Too many attempts. Try again in ${searchParams.mins ?? "15"} minutes.`,
     button: es ? "Entrar" : "Sign in",
     signup: es ? "¿No tienes cuenta? Regístrate" : "Don't have an account? Sign up",
   };
@@ -50,7 +53,9 @@ export default async function LoginPage({ searchParams }: { searchParams: { erro
         />
 
         {searchParams.error && (
-          <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{T.error}</p>
+          <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+            {searchParams.error === "locked" ? T.locked : T.error}
+          </p>
         )}
         <button type="submit" className="mt-4 min-h-[44px] w-full rounded-lg bg-brand px-4 py-2.5 font-medium text-white hover:bg-brand-dark">
           {T.button}

@@ -8,6 +8,8 @@ import { AUTH_COOKIE } from "@/middleware";
 import { db, currentBusiness } from "@/lib/supabase";
 import { createReminder, cancelQuoteReminders } from "@/lib/reminders";
 import { signSession, verifySession, parseSession } from "@/lib/auth";
+import { hashPassword, verifyPassword, safeEqual } from "@/lib/password";
+import { throttleStatus, recordFailure, clearFailures } from "@/lib/security";
 import { normalizeAmount, normalizeName, normalizeAddress } from "@/lib/normalize";
 import { toE164 } from "@/lib/phone";
 import type { ChargeStatus, ClientStatus, Lang } from "@/lib/types";
@@ -24,29 +26,43 @@ export async function login(formData: FormData) {
   const password = String(formData.get("password") ?? "");
   const phoneRaw = String(formData.get("phone") ?? "").trim();
   const next = String(formData.get("next") ?? "/dashboard");
-  if (password) {
-    // Founder master key → admin session (phone not needed).
-    if (password === config.dashboardPassword()) {
-      cookies().set(AUTH_COOKIE, await signSession("admin"), COOKIE_OPTS);
-      redirect(next.startsWith("/dashboard") ? next : "/dashboard");
-    }
-    // Operator: their PHONE NUMBER is the username, matched to their business.
-    const phone = toE164(phoneRaw);
-    if (phone) {
-      const { data: ap } = await db().from("authorized_phones").select("business_id").eq("phone", phone).maybeSingle();
-      const businessId = (ap as { business_id: string } | null)?.business_id;
-      if (businessId) {
-        const { data: biz } = await db().from("businesses").select("dashboard_password").eq("id", businessId).maybeSingle();
-        const stored = (biz as { dashboard_password: string | null } | null)?.dashboard_password;
-        if (stored && stored === password) {
-          cookies().set(AUTH_COOKIE, await signSession(`b:${businessId}`), COOKIE_OPTS);
-          cookies().delete("ft_biz");
-          redirect(next.startsWith("/dashboard") ? next : "/dashboard");
-        }
+  const dest = next.startsWith("/dashboard") ? next : "/dashboard";
+  const fail = (locked?: number) =>
+    redirect(`/dashboard/login?error=${locked ? "locked" : "1"}${locked ? `&mins=${locked}` : ""}&next=${encodeURIComponent(next)}`);
+
+  if (!password) fail();
+
+  // Rate limit per identifier (phone, or "admin" for the master key attempt).
+  const phone = toE164(phoneRaw);
+  const idKey = phone ?? "admin";
+  const locked = await throttleStatus(idKey);
+  if (locked > 0) fail(locked);
+
+  // Founder master key → admin session (phone not needed).
+  if (safeEqual(password, config.dashboardPassword())) {
+    await clearFailures(idKey);
+    cookies().set(AUTH_COOKIE, await signSession("admin"), COOKIE_OPTS);
+    redirect(dest);
+  }
+
+  // Operator: their PHONE NUMBER is the username, matched to their business.
+  if (phone) {
+    const { data: ap } = await db().from("authorized_phones").select("business_id").eq("phone", phone).maybeSingle();
+    const businessId = (ap as { business_id: string } | null)?.business_id;
+    if (businessId) {
+      const { data: biz } = await db().from("businesses").select("dashboard_password").eq("id", businessId).maybeSingle();
+      const stored = (biz as { dashboard_password: string | null } | null)?.dashboard_password;
+      if (verifyPassword(password, stored)) {
+        await clearFailures(idKey);
+        cookies().set(AUTH_COOKIE, await signSession(`b:${businessId}`), COOKIE_OPTS);
+        cookies().delete("ft_biz");
+        redirect(dest);
       }
     }
   }
-  redirect(`/dashboard/login?error=1&next=${encodeURIComponent(next)}`);
+
+  await recordFailure(idKey);
+  fail();
 }
 
 export async function logout() {
@@ -62,7 +78,7 @@ export async function setBusinessPassword(formData: FormData) {
   const businessId = String(formData.get("businessId") ?? "");
   const password = String(formData.get("password") ?? "").trim();
   if (businessId && password.length >= 6) {
-    await db().from("businesses").update({ dashboard_password: password }).eq("id", businessId);
+    await db().from("businesses").update({ dashboard_password: hashPassword(password) }).eq("id", businessId);
   }
   revalidatePath("/dashboard/admin");
 }
@@ -107,7 +123,7 @@ export async function registerOperator(_prev: unknown, formData: FormData): Prom
 
   const { data: biz, error } = await db().from("businesses").insert({
     slug, name: businessName, owner_name: ownerName, timezone,
-    dashboard_password: password,
+    dashboard_password: hashPassword(password),
     settings: { language: lang, quote_reminder_days: [2, 5, 7, 14], weekly_digest_enabled: true },
     created_at: new Date().toISOString(),
   }).select("*").single();
