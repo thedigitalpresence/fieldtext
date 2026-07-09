@@ -35,12 +35,19 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    const numMedia = Number(params.NumMedia ?? 0) || 0;
+    const media = Array.from({ length: Math.min(numMedia, 10) }, (_, i) => ({
+      url: params[`MediaUrl${i}`],
+      contentType: params[`MediaContentType${i}`],
+    })).filter((m) => m.url);
+
     const outcome = await handleInbound({
       from: params.From,
       to: params.To,
       body: params.Body ?? "",
       messageSid: params.MessageSid,
-      numMedia: Number(params.NumMedia ?? 0) || 0,
+      numMedia,
+      media,
     });
     return new NextResponse(outcome.twiml, { status: 200, headers: XML_HEADERS });
   } catch (err) {

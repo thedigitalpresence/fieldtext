@@ -119,7 +119,7 @@ function systemPrompt(ctx: ParseContext): string {
     ``,
     `Intents: log_quote, update_status, log_job, log_payment, set_reminder, query (questions like "who do I follow up with?"/"who owes me?"/"what's my monday route?"), correction (fixing the last record, e.g. "no it's 333 not 233"), help,`,
     `log_expense ("spent 84 on mulch at home depot" -> amount + expense_category + description — money OUT, never log_payment),`,
-    `update_client_info ("angela's number is 555-0142" -> phone; "gate code 4412 at the smiths" -> note_text; "jones referred by bob" -> referred_by),`,
+    `update_client_info ("angela's number is 555-0142" -> phone; "gate code 4412 at the smiths" -> note_text; "jones referred by bob" -> referred_by; "note for the wilsons: big backyard, steep slope, wants edging" -> note_text — site-visit notes BEFORE any quote are normal, the client may not exist yet),`,
     `pause_client ("hold jones til spring", "pause the smiths" -> pause_until if a date is given) / resume_client,`,
     `skip_visit ("skip the smiths this week" — one visit only, NOT a schedule change),`,
     `reschedule_visit ("move garcia to friday" -> target_date — one visit only, do NOT change service_day),`,
@@ -268,6 +268,10 @@ function parseClause(text: string, _ctx: ParseContext): Record<string, any> | nu
     const desc = t.replace(/^.*?\b(?:spent|gast[eé]|bought|compr[eé])\b\s*/i, "").replace(/^\$?[\d.,]+\s*(?:on|en|de)?\s*/i, "");
     return { intent: "log_expense", confidence: 0.6, amount: t, expense_category: t, note_text: desc };
   }
+
+  // Site notes ("note for the wilsons: big backyard, steep slope" — client may not exist yet)
+  const noteM = t.match(/^notes?\s+(?:for|on|about)?\s*(?:the |los |las |el |la )?([a-zà-ÿ][a-zà-ÿ .'’-]+?)\s*[:,-]\s*(.+)$/i);
+  if (noteM) return { intent: "update_client_info", confidence: 0.65, client_name: cleanName(noteM[1]), note_text: noteM[2].trim() };
 
   // Client info ("angela's number is 555-0142", "gate code 4412 at the smiths", "jones referred by bob")
   const phoneM = t.match(/^(?:the |los |las |el |la )?([a-zà-ÿ][a-zà-ÿ .'’-]+?)(?:'s)?\s+(?:number|phone|cell|tel[eé]fono)\s+(?:is|es)?\s*([+()\d][\d\s().-]{6,})/i);

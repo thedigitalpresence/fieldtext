@@ -2,13 +2,17 @@ import { db, getBusinessById, findAuthorizedPhone } from "./supabase";
 import { toE164 } from "./phone";
 import { parseMessage, ParseContext } from "./anthropic";
 import { executeParsed, resolvePending, ActionSession } from "./intents";
-import { listClients } from "./clients";
+import { listClients, matchClientsScored, updateClient, STRONG_MATCH } from "./clients";
+import { saveMedia, InboundMedia } from "./attachments";
 import { logMessage } from "./twilio";
 import { logSms, logLlm } from "./billing";
 import { businessLang, t } from "./templates";
-import type { Lang, PendingState } from "./types";
+import type { Business, Lang, PendingState } from "./types";
 
-export interface InboundParams { from: string; to: string; body: string; messageSid?: string; numMedia?: number }
+export interface InboundParams {
+  from: string; to: string; body: string; messageSid?: string; numMedia?: number;
+  media?: InboundMedia[];
+}
 export interface InboundOutcome { twiml: string; authorized: boolean }
 
 const EMPTY_TWIML = '<?xml version="1.0" encoding="UTF-8"?><Response></Response>';
@@ -77,10 +81,12 @@ export async function handleInbound(params: InboundParams): Promise<InboundOutco
     .eq("direction", "inbound").eq("from_phone", fromE164).limit(1);
   const isFirstText = !((prior ?? []) as unknown[]).length;
 
-  // ── Photo texted in: point at the import flow (vision import lives there) ────
-  if ((params.numMedia ?? 0) > 0 && body.length < 4) {
-    await logMessage({ businessId: business.id, direction: "inbound", fromPhone: fromE164, body: body || "(photo)", intent: "help", externalId: params.messageSid });
-    return { twiml: replyTwiml(t.photoHint(lang)), authorized: true };
+  // ── Photo texted in: attach to a client (or ask whose site it is) ───────────
+  const media = (params.media ?? []).slice(0, 10);
+  if ((params.numMedia ?? 0) > 0 && media.length > 0) {
+    await logMessage({ businessId: business.id, direction: "inbound", fromPhone: fromE164, body: body || "(photo)", intent: "photo", externalId: params.messageSid });
+    const reply = await handlePhoto(business, authPhone.id, media, body, lang);
+    return { twiml: replyTwiml(reply), authorized: true };
   }
 
   const clients = await listClients(business.id);
@@ -165,4 +171,30 @@ export async function handleInbound(params: InboundParams): Promise<InboundOutco
   const outboundId = await logMessage({ businessId: business.id, direction: "outbound", body: reply });
   await logSms(business, { direction: "outbound", body: reply, messageId: outboundId });
   return { twiml: replyTwiml(reply), authorized: true };
+}
+
+/**
+ * A photo arrived. If the caption clearly names a client, attach it to them
+ * (and keep the caption as a note). Otherwise remember the photo and ask whose
+ * site it is — the next text answers.
+ */
+async function handlePhoto(business: Business, authPhoneId: string, media: InboundMedia[], caption: string, lang: Lang): Promise<string> {
+  if (caption.trim().length >= 3) {
+    const matches = await matchClientsScored(business.id, { name: caption });
+    if (matches.length === 1 && matches[0].score >= STRONG_MATCH) {
+      const client = matches[0].client;
+      const saved = await saveMedia(business.id, client.id, media, caption);
+      if (saved > 0) {
+        return t.photoSaved(saved, client.name, lang);
+      }
+    }
+  }
+  const pending: PendingState = {
+    kind: "attach_photo",
+    action: { intent: "update_client_info", confidence: 1, note_text: caption || undefined },
+    media,
+    expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+  };
+  await db().from("authorized_phones").update({ pending_state: pending }).eq("id", authPhoneId);
+  return t.photoWho(lang);
 }

@@ -117,6 +117,7 @@ const en = {
   confirmDecline: "Mark this client declined? They'll come off your list.",
   genericError: "Something went wrong — try again.",
   importedBanner: "Imported {n} client(s) ✅",
+  photos: "Photos",
 };
 
 const es: Dict = {
@@ -220,6 +221,7 @@ const es: Dict = {
   confirmDecline: "¿Marcar este cliente como rechazado? Saldrá de tu lista.",
   genericError: "Algo salió mal — intenta de nuevo.",
   importedBanner: "Importé {n} cliente(s) ✅",
+  photos: "Fotos",
 };
 
 const DICTS: Record<Lang, Dict> = { en, es };

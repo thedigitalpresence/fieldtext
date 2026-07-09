@@ -25,11 +25,22 @@ export interface BusinessSettings {
 
 /** Conversation memory: the pending question the next inbound text may answer. */
 export interface PendingState {
-  kind: "which_client" | "confirm_create" | "missing_amount" | "confirm_match" | "complete_client";
+  kind: "which_client" | "confirm_create" | "missing_amount" | "confirm_match" | "complete_client" | "attach_photo";
   action: ParsedAction; // the action to run once resolved
   candidateIds?: string[]; // which_client choices in order / confirm_match's single candidate
   missing?: string[]; // complete_client: which fields we're still chasing ("name"|"address"|"phone")
+  media?: { url: string; contentType?: string }[]; // attach_photo: the photos waiting for a client
   expiresAt: string; // ISO; stale questions are ignored
+}
+
+export interface Attachment {
+  id: string;
+  business_id: string;
+  client_id: string | null;
+  storage_path: string;
+  content_type: string | null;
+  caption: string | null;
+  created_at: string;
 }
 
 export type ReminderKind = "manual" | "quote_followup";

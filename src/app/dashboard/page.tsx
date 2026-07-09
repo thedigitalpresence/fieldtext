@@ -3,6 +3,7 @@ import { dict } from "@/i18n";
 import { businessLang, money, periodLabel } from "@/lib/templates";
 import { monthlyEquivalent } from "@/lib/intents";
 import { totalOutstanding } from "@/lib/charges";
+import { listPhotos } from "@/lib/attachments";
 import DashboardClient from "./DashboardClient";
 import type { Client, Job, Payment, Reminder, Message, Lang } from "@/lib/types";
 
@@ -179,6 +180,11 @@ export default async function DashboardPage({ searchParams }: { searchParams?: {
     rel: relativeTime(m.created_at, lang), exact: fmtExact(m.created_at, lang),
   }));
 
+  const photos = await listPhotos(bid).catch((e) => {
+    console.error("[dashboard] photos failed:", e);
+    return [] as Awaited<ReturnType<typeof listPhotos>>;
+  });
+
   const jobViews = jobs.map((j) => ({ id: j.id, clientId: j.client_id, description: j.description, dateStr: fmtShort(j.performed_on, lang), who: j.client_id ? nameOf(j.client_id) : null }));
   const payViews = payments.map((p) => ({ id: p.id, clientId: p.client_id, amountStr: money(p.amount), dateStr: fmtShort(p.paid_on ?? p.created_at, lang), who: p.client_id ? nameOf(p.client_id) : null, status: p.status ?? "paid" }));
   const reminderViews = reminders.map((r) => ({ id: r.id, clientId: r.client_id, text: r.text, dateStr: fmtShort(r.due_at, lang), kind: r.kind }));
@@ -210,6 +216,7 @@ export default async function DashboardPage({ searchParams }: { searchParams?: {
     unscheduled: d.unscheduled, weekdays,
     exportCsv: d.exportCsv, phoneLabel: d.phoneLabel, emailLabel: d.emailLabel,
     pausedUntil: d.pausedUntil, pausedGroup: d.pausedGroup, confirmDecline: d.confirmDecline,
+    photos: d.photos,
     importedBanner: importedCount > 0 ? d.importedBanner.replace("{n}", String(importedCount)) : "",
   };
 
@@ -229,6 +236,7 @@ export default async function DashboardPage({ searchParams }: { searchParams?: {
         scheduledThisWeek,
       }}
       today={todayStrip}
+      photos={photos}
       clients={clientViews}
       upcoming={upcoming}
       activity={activity}

@@ -53,6 +53,7 @@ interface Props {
     services: { id: string; name: string; address: string | null; overdue: boolean }[];
     reminders: { id: string; clientId: string | null; text: string; who: string | null; overdue: boolean }[];
   };
+  photos: { id: string; clientId: string | null; url: string; caption: string | null }[];
   clients: ClientView[];
   upcoming: Upcoming[];
   activity: Activity[];
@@ -454,6 +455,7 @@ export default function DashboardClient(props: Props) {
           jobs={props.jobs.filter((j) => j.clientId === selected.id)}
           payments={props.payments.filter((p) => p.clientId === selected.id)}
           reminders={props.reminders.filter((r) => r.clientId === selected.id)}
+          photos={props.photos.filter((p) => p.clientId === selected.id)}
           onClose={() => setSelectedId(null)}
         />
       )}
@@ -462,9 +464,10 @@ export default function DashboardClient(props: Props) {
 }
 
 function ClientDetail({
-  client, labels: L, jobs, payments, reminders, onClose,
+  client, labels: L, jobs, payments, reminders, photos, onClose,
 }: {
-  client: ClientView; labels: Record<string, any>; jobs: JobView[]; payments: PayView[]; reminders: RemView[]; onClose: () => void;
+  client: ClientView; labels: Record<string, any>; jobs: JobView[]; payments: PayView[]; reminders: RemView[];
+  photos: { id: string; url: string; caption: string | null }[]; onClose: () => void;
 }) {
   // Drawer manners: Escape closes, the page behind stops scrolling.
   useEffect(() => {
@@ -528,6 +531,20 @@ function ClientDetail({
           {client.notes && (
             <Group title={L.notes}>
               <p className="whitespace-pre-wrap text-sm text-gray-700">{client.notes}</p>
+            </Group>
+          )}
+
+          {/* Site photos (texted in as MMS) */}
+          {photos.length > 0 && (
+            <Group title={L.photos}>
+              <div className="grid grid-cols-3 gap-2">
+                {photos.map((p) => (
+                  <a key={p.id} href={p.url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-lg border border-gray-100">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={p.url} alt={p.caption ?? client.name} loading="lazy" className="aspect-square w-full object-cover" />
+                  </a>
+                ))}
+              </div>
             </Group>
           )}
 

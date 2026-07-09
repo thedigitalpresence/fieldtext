@@ -309,6 +309,59 @@ test("G4: courtesy words never pollute names", async () => {
   }
 });
 
+// ── G6: notes + photos ─────────────────────────────────────────────────────────
+test("G6: note-first prospect — note before any quote creates a prospect with the note", async () => {
+  await convo("G6 note-new", [], [
+    { send: "note for the wilsons: big backyard, steep slope, wants edging", expect: [/wilsons/i, /YES/i] },
+    { send: "yes", expect: [/Saved ✅/i, /big backyard/i] },
+  ]);
+  const row = await getClient("Wilsons");
+  assert.ok(row, "prospect created");
+  assert.equal(row!.status, "quoted", "note-first prospect is quoted, not active");
+  assert.match(String(row!.notes), /steep slope/);
+});
+
+test("G6: note on an existing client appends", async () => {
+  await convo("G6 note-existing", FULL_BOOK, [
+    { send: "note for dee garcia: gate sticks, lift latch hard", expect: [/Dee Garcia/, /gate sticks/i] },
+  ]);
+  const row = await getClient("Dee Garcia");
+  assert.match(String(row!.notes), /gate sticks/);
+});
+
+test("G6: photo with client caption attaches directly", async () => {
+  SCENARIOS++;
+  await reset(FULL_BOOK);
+  SID++;
+  const out = await handleInbound({
+    from: "+15550001111", to: "+19995550000", body: "the smiths",
+    messageSid: `SMphoto${SID}`, numMedia: 1,
+    media: [{ url: "https://api.twilio.com/fake/Media/ME123", contentType: "image/jpeg" }],
+  });
+  assert.match(out.twiml, /Saved.*photo.*The Smiths/i, out.twiml);
+  const { data } = await db().from("attachments").select("*");
+  assert.equal((data as unknown[]).length, 1, "attachment row exists");
+});
+
+test("G6: photo without caption asks whose site, reply resolves it", async () => {
+  SCENARIOS++;
+  await reset(FULL_BOOK);
+  SID++;
+  const out = await handleInbound({
+    from: "+15550001111", to: "+19995550000", body: "",
+    messageSid: `SMphoto${SID}`, numMedia: 1,
+    media: [{ url: "https://api.twilio.com/fake/Media/ME456", contentType: "image/jpeg" }],
+  });
+  assert.match(out.twiml, /whose site|which client|photo/i, out.twiml);
+  const reply = await say("dee garcia");
+  assert.match(reply, /Saved.*photo.*Dee Garcia/i, reply);
+  const { data } = await db().from("attachments").select("*");
+  const rows = data as { client_id: string | null }[];
+  assert.equal(rows.length, 1);
+  const dee = await getClient("Dee Garcia");
+  assert.equal(rows[0].client_id, (dee as unknown as { id: string }).id, "attached to the right client");
+});
+
 // ── G5: full command regression across book states ────────────────────────────
 test("G5: every command family works against every book state", async () => {
   const commands: { send: string; expect: RegExp }[] = [

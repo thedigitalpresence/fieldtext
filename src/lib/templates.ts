@@ -191,6 +191,16 @@ export const t = {
     lang === "es"
       ? "📸 Recibí tu foto — para cargar una lista de clientes desde una foto, usa Importar en tu panel: fieldtext.vercel.app/dashboard/import"
       : "📸 Got your photo — to load a client list from a photo, use Import on your dashboard: fieldtext.vercel.app/dashboard/import",
+  photoWho: (lang: Lang) =>
+    lang === "es"
+      ? "📸 ¿De qué cliente es esta foto? Responde con el nombre — o IMPORTAR si es una lista de clientes."
+      : "📸 Whose site is this photo from? Reply with the client name — or IMPORT if it's a client list to load.",
+  photoSaved: (count: number, name: string, lang: Lang) =>
+    lang === "es"
+      ? `Guardé ${count > 1 ? `${count} fotos` : "la foto"} en la ficha de ${name} 📸 — la ves en tu panel.`
+      : `Saved ${count > 1 ? `${count} photos` : "the photo"} to ${name} 📸 — it's on their card in your dashboard.`,
+  noteSaved: (name: string, lang: Lang) =>
+    lang === "es" ? `Nota guardada ✅ en la ficha de ${name}.` : `Note saved ✅ to ${name}.`,
   yesToAdd: (name: string, lang: Lang) =>
     lang === "es" ? `No encontré a "${name}". Responde SÍ para agregarlo, o manda el nombre correcto.` : `I don't know "${name}". Reply YES to add them, or send the right name.`,
   needInfo: (name: string, missing: string[], lang: Lang) => {

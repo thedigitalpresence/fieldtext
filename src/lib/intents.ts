@@ -12,6 +12,7 @@ import {
   generateDueCharges, createManualCharge, createJobCharge, applyPaymentToCharges,
   clientBalance, openBalances, totalOutstanding,
 } from "./charges";
+import { saveMedia } from "./attachments";
 import { config } from "./config";
 import type { Business, Client, Charge, Job, ParsedAction, ParseResult, PendingState, ServiceInterval, Lang } from "./types";
 
@@ -164,6 +165,28 @@ export async function resolvePending(
     return runAction(business, action, ctx, null, session, lang, a);
   }
 
+  // "Whose site is this photo from?" — the reply names the client.
+  if (pending.kind === "attach_photo") {
+    if (/^\s*(import|importar)\s*[.!]?\s*$/i.test(a)) return t.photoHint(lang);
+    const matches = await matchClientsScored(business.id, { name: a });
+    if (matches.length === 1 && matches[0].score >= STRONG_MATCH) {
+      const client = matches[0].client;
+      const saved = await saveMedia(business.id, client.id, pending.media ?? [], pending.action.note_text ?? null);
+      return saved > 0 ? t.photoSaved(saved, client.name, lang) : t.errorSaving(lang);
+    }
+    if (matches.length > 1) {
+      session.pending = pending; // keep the photo waiting; a more specific name resolves it
+      const opts = matches.slice(0, 4).map((m, i) => `(${i + 1}) ${m.client.name}${m.client.address ? ` — ${m.client.address}` : ""}`).join("  ");
+      return t.whichClient(opts, lang);
+    }
+    if (/^[a-zà-ÿ][a-zà-ÿ .'’-]{2,}$/i.test(a.trim())) {
+      // Unknown name — keep the photo waiting and say so.
+      session.pending = pending;
+      return t.notFound(a.trim(), lang);
+    }
+    return null; // unrelated text — normal parse takes over, photo expires
+  }
+
   if (pending.kind === "confirm_match") {
     const candidateId = pending.candidateIds?.[0];
     if (/^\s*(yes|yeah|yep|s[ií]|dale|ok)\s*[.!]?\s*$/i.test(a) && candidateId) {
@@ -175,7 +198,11 @@ export async function resolvePending(
       const client = await createClient(business.id, {
         name: p.client_name ?? "New client",
         address: p.address,
-        status: p.intent === "log_quote" ? (p.status === "active" ? "active" : "quoted") : "active",
+        // Quotes stay quoted (unless won); note-first prospects start quoted too
+        // (a site visit before any deal); everything else implies won work.
+        status: p.intent === "log_quote"
+          ? (p.status === "active" ? "active" : "quoted")
+          : p.intent === "update_client_info" ? "quoted" : "active",
       });
       const action: ParsedAction = { ...p, client_id: client.id, client_is_new: true };
       return runAction(business, action, ctx, null, session, lang, a);
@@ -189,7 +216,11 @@ export async function resolvePending(
       const client = await createClient(business.id, {
         name: p.client_name ?? "New client",
         address: p.address,
-        status: p.intent === "log_quote" ? (p.status === "active" ? "active" : "quoted") : "active",
+        // Quotes stay quoted (unless won); note-first prospects start quoted too
+        // (a site visit before any deal); everything else implies won work.
+        status: p.intent === "log_quote"
+          ? (p.status === "active" ? "active" : "quoted")
+          : p.intent === "update_client_info" ? "quoted" : "active",
       });
       const action: ParsedAction = { ...p, client_id: client.id, client_is_new: true };
       return runAction(business, action, ctx, null, session, lang, a);
@@ -747,10 +778,11 @@ export async function buildSnapshot(business: Business): Promise<string> {
 
   const lines: string[] = [];
   lines.push(`TODAY: ${today}`);
-  lines.push(`OPEN QUOTES (need follow-up): ${quoted.length}`);
-  for (const c of quoted) lines.push(`- ${c.name}${c.address ? ` (${c.address})` : ""}: ${money(c.amount)}${periodLabel(c.billing_period, lang)}${c.service_description ? `, ${c.service_description}` : ""}`);
+  const noteStr = (c: Client) => (c.notes ? `, notes: "${c.notes.replace(/\n/g, "; ").slice(0, 120)}"` : "");
+  lines.push(`OPEN QUOTES & PROSPECTS (need follow-up): ${quoted.length}`);
+  for (const c of quoted) lines.push(`- ${c.name}${c.address ? ` (${c.address})` : ""}: ${money(c.amount)}${periodLabel(c.billing_period, lang)}${c.service_description ? `, ${c.service_description}` : ""}${noteStr(c)}`);
   lines.push(`ACTIVE CLIENTS: ${active.length}`);
-  for (const c of active) lines.push(`- ${c.name}${c.address ? ` (${c.address})` : ""}: ${money(c.amount)}${periodLabel(c.billing_period, lang)}${c.service_description ? `, ${c.service_description}` : ""}${c.phone ? `, ph ${c.phone}` : ""}${c.service_day ? `, ${c.service_day}s` : ""}${c.next_service_on ? ` (next visit ${c.next_service_on})` : ""}`);
+  for (const c of active) lines.push(`- ${c.name}${c.address ? ` (${c.address})` : ""}: ${money(c.amount)}${periodLabel(c.billing_period, lang)}${c.service_description ? `, ${c.service_description}` : ""}${c.phone ? `, ph ${c.phone}` : ""}${c.service_day ? `, ${c.service_day}s` : ""}${c.next_service_on ? ` (next visit ${c.next_service_on})` : ""}${noteStr(c)}`);
   if (paused.length) {
     lines.push(`PAUSED CLIENTS: ${paused.length}`);
     for (const c of paused) lines.push(`- ${c.name}${c.paused_until ? ` (until ${c.paused_until})` : ""}`);
