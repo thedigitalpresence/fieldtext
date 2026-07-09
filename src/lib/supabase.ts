@@ -26,6 +26,39 @@ export async function getBusiness(slug?: string): Promise<Business> {
   return data as Business;
 }
 
+/**
+ * The business the current dashboard session is acting on.
+ *   business session → that business.
+ *   admin session    → the one selected via the ft_biz cookie, else the default.
+ * Reads cookies, so only call from server components / server actions.
+ */
+export async function currentBusiness(): Promise<Business> {
+  const { cookies } = await import("next/headers");
+  const { verifySession, parseSession } = await import("./auth");
+  const session = parseSession(await verifySession(cookies().get("ft_auth")?.value));
+  if (session?.kind === "business") return getBusinessById(session.businessId);
+  if (session?.kind === "admin") {
+    const sel = cookies().get("ft_biz")?.value;
+    if (sel) {
+      try { return await getBusinessById(sel); } catch { /* fall through to default */ }
+    }
+  }
+  return getBusiness();
+}
+
+/** Every business, for the admin switcher / registration list. */
+export async function listBusinesses(): Promise<Business[]> {
+  const { data } = await db().from("businesses").select("*").order("created_at", { ascending: true });
+  return (data ?? []) as Business[];
+}
+
+/** The verified session (admin / business / null). Server-only (reads cookies). */
+export async function currentSession() {
+  const { cookies } = await import("next/headers");
+  const { verifySession, parseSession } = await import("./auth");
+  return parseSession(await verifySession(cookies().get("ft_auth")?.value));
+}
+
 export async function getBusinessById(id: string): Promise<Business> {
   const { data, error } = await db().from("businesses").select("*").eq("id", id).single();
   if (error || !data) throw new Error(`Business ${id} not found`);

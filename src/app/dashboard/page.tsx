@@ -1,4 +1,4 @@
-import { db, getBusiness, getPrimaryPhone } from "@/lib/supabase";
+import { db, currentBusiness, currentSession, listBusinesses, getPrimaryPhone } from "@/lib/supabase";
 import { dict } from "@/i18n";
 import { businessLang, money, periodLabel } from "@/lib/templates";
 import { monthlyEquivalent } from "@/lib/intents";
@@ -62,9 +62,14 @@ function activityText(m: Message, lang: Lang): string {
 }
 
 export default async function DashboardPage({ searchParams }: { searchParams?: { imported?: string } }) {
-  const business = await getBusiness();
+  const business = await currentBusiness();
+  const session = await currentSession();
   const importedCount = Number(searchParams?.imported ?? 0) || 0;
   const bid = business.id;
+  // Admin (founder) sees a business switcher + a link to register operators.
+  const admin = session?.kind === "admin"
+    ? { currentId: bid, businesses: (await listBusinesses()).map((b) => ({ id: b.id, name: b.name })) }
+    : null;
   const lang = businessLang(business);
   const d = dict(lang);
 
@@ -253,6 +258,7 @@ export default async function DashboardPage({ searchParams }: { searchParams?: {
         scheduledThisWeek,
       }}
       today={todayStrip}
+      admin={admin}
       photos={photos}
       outstanding={outstandingList}
       clients={clientViews}

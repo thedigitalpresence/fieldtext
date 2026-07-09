@@ -7,12 +7,12 @@ import Link from "next/link";
 import {
   FileText, UserCheck, Briefcase, DollarSign, Bell, MessageCircle, Languages,
   CalendarClock, Search, X, Check, Clock, Ban, Upload, Sun, Leaf, TrendingUp, AlertCircle,
-  Download, Loader2, ChevronRight, Phone, PauseCircle, Pencil,
+  Download, Loader2, ChevronRight, Phone, PauseCircle, Pencil, Users,
 } from "lucide-react";
 import type { ClientStatus, Lang } from "@/lib/types";
 import {
   logout, setLanguage, markStatus, addNote, addReminderAction, logPayment, reminderAction,
-  editClient, settleBalance, voidBalance,
+  editClient, settleBalance, voidBalance, switchBusiness,
 } from "./actions";
 
 const STATUS_COLOR: Record<ClientStatus, string> = {
@@ -58,6 +58,7 @@ interface Props {
   };
   photos: { id: string; clientId: string | null; url: string; caption: string | null }[];
   outstanding: { clientId: string | null; name: string; amountStr: string; dueStr: string }[];
+  admin: { currentId: string; businesses: { id: string; name: string }[] } | null;
   clients: ClientView[];
   upcoming: Upcoming[];
   activity: Activity[];
@@ -210,6 +211,11 @@ export default function DashboardClient(props: Props) {
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          {props.admin && (
+            <Link href="/dashboard/admin" title="Operators" aria-label="Operators" className={`flex ${TAP} min-w-[44px] items-center justify-center rounded-lg border border-gray-300 px-2.5 text-gray-600 hover:bg-gray-100`}>
+              <Users className="h-4 w-4" />
+            </Link>
+          )}
           <div className="flex overflow-hidden rounded-lg border border-gray-300 text-xs font-medium">
             {(["en", "es"] as Lang[]).map((lng) => (
               <form key={lng} action={setLanguage}>
@@ -232,6 +238,22 @@ export default function DashboardClient(props: Props) {
           </form>
         </div>
       </header>
+
+      {/* Admin: which operator's book am I viewing? */}
+      {props.admin && props.admin.businesses.length > 1 && (
+        <form action={switchBusiness} className="flex items-center gap-2 rounded-xl border border-brand/20 bg-brand/5 px-3 py-2">
+          <Users className="h-4 w-4 shrink-0 text-brand-dark" />
+          <span className="text-xs font-medium text-brand-dark">Viewing:</span>
+          <select
+            name="businessId"
+            defaultValue={props.admin.currentId}
+            onChange={(e) => e.currentTarget.form?.requestSubmit()}
+            className="min-w-0 flex-1 rounded-lg border border-brand/20 bg-white px-2 py-1.5 text-sm font-medium text-gray-800 focus:border-brand focus:outline-none"
+          >
+            {props.admin.businesses.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </select>
+        </form>
+      )}
 
       {/* Post-import success banner */}
       {L.importedBanner && (

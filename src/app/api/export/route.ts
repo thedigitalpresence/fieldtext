@@ -4,9 +4,9 @@
  * this doubles as their backup and their exit door.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { db, getBusiness } from "@/lib/supabase";
+import { db, currentBusiness } from "@/lib/supabase";
 import { openBalances } from "@/lib/charges";
-import { config } from "@/lib/config";
+import { verifySession } from "@/lib/auth";
 import type { Client } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -24,10 +24,10 @@ function toCsv(headers: string[], rows: unknown[][]): string {
 }
 
 export async function GET(req: NextRequest) {
-  if (req.cookies.get("ft_auth")?.value !== config.dashboardPassword()) {
+  if (!(await verifySession(req.cookies.get("ft_auth")?.value))) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
-  const business = await getBusiness();
+  const business = await currentBusiness();
   const what = req.nextUrl.searchParams.get("what") ?? "clients";
 
   let csv = "";

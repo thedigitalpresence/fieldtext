@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { config } from "@/lib/config";
+import { verifySession } from "@/lib/auth";
 import { parseTextHeuristic, parseCsv, extractClientsLLM, extractClientsFromImage } from "@/lib/import";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function authed(req: NextRequest): boolean {
-  return req.cookies.get("ft_auth")?.value === config.dashboardPassword();
+async function authed(req: NextRequest): Promise<boolean> {
+  return Boolean(await verifySession(req.cookies.get("ft_auth")?.value));
 }
 
 /**
@@ -15,7 +16,7 @@ function authed(req: NextRequest): boolean {
  * Returns { drafts: ClientDraft[], error?: string }. Nothing is saved here.
  */
 export async function POST(req: NextRequest) {
-  if (!authed(req)) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!(await authed(req))) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const form = await req.formData();
   const method = String(form.get("method") ?? "text");
