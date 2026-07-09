@@ -10,7 +10,7 @@ import { toE164 } from "@/lib/phone";
 // WRITTEN half of double opt-in; texting the number is the mobile-originated half.
 export const CONSENT_TEXT =
   "I agree to receive recurring SMS text messages from FieldText at the mobile number I provided, to log and " +
-  "manage my landscaping business — confirmations, quote/job reminders, follow-up nudges, and account " +
+  "manage my business, including confirmations, quote and job reminders, follow-up nudges, and account " +
   "notifications. Message frequency varies. Message & data rates may apply. Reply STOP to opt out and HELP for " +
   "help. Consent is not a condition of any purchase. See our Privacy Policy and Terms.";
 
@@ -49,7 +49,7 @@ export async function submitSignup(_prev: SignupResult | null, formData: FormDat
   const alertTo = process.env.FOUNDER_ALERT_PHONE || process.env.OWNER_PHONE;
   if (alertTo) {
     try {
-      await sendSms(alertTo, `🌱 New FieldText signup: ${name} — ${business} — ${phone}`);
+      await sendSms(alertTo, `🌱 New FieldText signup: ${name}, ${business}, ${phone}`);
     } catch (e) {
       console.error("[signup] founder alert failed:", e);
     }

@@ -23,7 +23,7 @@ function fakeReply(input: string): string {
     const name = input.match(/quoted\s+([a-z]+(?:\s[a-z]+)?)/i)?.[1] ?? "Jane";
     const amt = input.match(/\$?\s?(\d[\d,]*)/)?.[1] ?? "200";
     const cap = name.replace(/\b\w/g, (c) => c.toUpperCase());
-    return `Got it ✅ ${cap} · $${amt}/mo · Quoted. I'll nudge you if they go quiet — reply "no" to fix.`;
+    return `Got it ✅ ${cap} · $${amt}/mo · Quoted. I'll nudge you if they go quiet. Reply "fix" to correct.`;
   }
   if (/owes me|who owes|debe/.test(t)) return "Bob Smith owes $450 (oldest due Jun 24). Everyone else is settled ✅";
   if (/paid|collected|venmo|pag/.test(t)) {
@@ -34,12 +34,12 @@ function fakeReply(input: string): string {
   if (/rain|push/.test(t)) return "Moved ✅ 3 stop(s) → Jul 8: The Smiths, Garcia, Jane.";
   if (/invoice/.test(t)) return "Invoice for Bob ($450): fieldtextapp.com/i/a1b2…\nForward it from your phone 👍";
   if (/mowed|mow|cut|trim|clean/.test(t)) return "Logged ✅ mowing for The Smiths on Jul 7. Next visit Jul 14.";
-  return 'I can log quotes, jobs, payments, and reminders — try "quoted Jane at 5 Oak St for $200/mo".';
+  return 'I can log quotes, jobs, payments, and reminders. Try "quoted Jane at 5 Oak St for $200/mo".';
 }
 
 export default function DemoWidget() {
   const [msgs, setMsgs] = useState<Msg[]>([
-    { from: "ft", text: "This is a live demo — text me like you'd text FieldText. Try a suggestion below 👇" },
+    { from: "ft", text: "This is a live demo. Text me like you'd text FieldText. Try a suggestion below 👇" },
   ]);
   const [input, setInput] = useState("");
   const scroller = useRef<HTMLDivElement>(null);
@@ -59,7 +59,7 @@ export default function DemoWidget() {
   return (
     <div className="w-full max-w-md overflow-hidden rounded-2xl border border-gray-200 bg-white text-left shadow-sm">
       <div className="border-b border-gray-100 bg-brand/5 px-4 py-2.5 text-center text-xs font-semibold uppercase tracking-wide text-brand-dark">
-        Try it — simulated demo
+        Try it: simulated demo
       </div>
       <div ref={scroller} className="h-64 space-y-2 overflow-y-auto p-3">
         {msgs.map((m, i) => (

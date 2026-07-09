@@ -2,7 +2,16 @@ import Link from "next/link";
 import { Leaf, Check } from "lucide-react";
 import DemoWidget from "./DemoWidget";
 
-export const metadata = { title: "FieldText — Run your landscaping business by text" };
+export const metadata = { title: "FieldText: Run your business by text" };
+
+const FOR_WHO = ["Landscapers", "Handymen", "House cleaners", "Painters", "Pool techs", "Pressure washers"];
+const FEATURES = [
+  "Text one number in plain language, English or Spanish",
+  "Log quotes, jobs, and payments as they happen",
+  "Automatic follow-ups so nothing slips through",
+  "It knows who owes you, and makes invoices you can forward",
+  "A clean dashboard of your whole book, if you ever want it",
+];
 
 export default function Home() {
   return (
@@ -13,22 +22,25 @@ export default function Home() {
         <h1 className="text-4xl font-bold tracking-tight">
           Field<span className="text-brand">Text</span>
         </h1>
-        <p className="max-w-md text-lg text-gray-600">
-          Run your whole landscaping business with a text message. Quotes, jobs, payments,
-          reminders — text one number in plain language, English or Spanish. No app to learn.
+        <p className="max-w-lg text-lg text-gray-600">
+          Run your whole business with a text message. If you work out of a truck, FieldText is your
+          black book. Text one number like you talk, and it keeps everything straight and texts you back.
+        </p>
+        <p className="max-w-md text-sm text-gray-500">
+          Built for people in the field: {FOR_WHO.join(", ")}, and anyone who runs jobs on the go.
         </p>
         <div className="flex flex-wrap items-center justify-center gap-3">
           <Link
             href="/signup"
             className="rounded-xl bg-brand px-6 py-3 font-semibold text-white shadow-sm hover:bg-brand-dark"
           >
-            Get started — founding member $29/mo
+            Become a beta tester
           </Link>
           <Link
             href="/dashboard"
             className="rounded-xl border border-gray-300 bg-white px-5 py-3 font-medium text-gray-700 hover:border-brand/40"
           >
-            Owner sign in
+            Sign in
           </Link>
         </div>
       </div>
@@ -36,28 +48,15 @@ export default function Home() {
       {/* Demo */}
       <DemoWidget />
 
-      {/* Pricing — on the page, no "contact us" games */}
+      {/* What it does */}
       <section className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-        <p className="text-xs font-bold uppercase tracking-widest text-brand-dark">Simple pricing</p>
-        <div className="mt-2 flex items-baseline justify-center gap-2">
-          <span className="text-4xl font-bold tracking-tight text-gray-900">$49</span>
-          <span className="text-gray-500">/month</span>
-        </div>
-        <p className="mt-1 text-sm font-medium text-brand-dark">
-          Founding members: $29/mo locked for life — first 10 businesses only.
-        </p>
-        <ul className="mx-auto mt-4 max-w-xs space-y-2 text-left text-sm text-gray-600">
-          {[
-            "Unlimited texting — your whole black book by SMS",
-            "Automatic quote follow-ups + morning day sheet",
-            "Knows who owes you — invoices your customers can open",
-            "Concierge setup: text a photo of your notebook, we load it",
-            "English + Spanish, you and your crew",
-          ].map((f) => (
+        <p className="text-xs font-bold uppercase tracking-widest text-brand-dark">What it does</p>
+        <ul className="mx-auto mt-4 max-w-sm space-y-2 text-left text-sm text-gray-600">
+          {FEATURES.map((f) => (
             <li key={f} className="flex gap-2"><Check className="mt-0.5 h-4 w-4 shrink-0 text-brand" />{f}</li>
           ))}
         </ul>
-        <p className="mt-4 text-xs text-gray-400">30-day pilot. No contract — export your data anytime.</p>
+        <p className="mt-5 text-sm font-medium text-brand-dark">Free while we&apos;re in beta.</p>
       </section>
 
       {/* Footer */}

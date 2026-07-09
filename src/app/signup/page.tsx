@@ -34,8 +34,9 @@ export default function SignupPage() {
           Field<span className="text-brand">Text</span>
         </h1>
         <p className="mt-1 text-gray-600">
-          Run your landscaping business by text. Log quotes, jobs, payments, and reminders in plain language —
-          FieldText understands it, saves it, and texts you back. Sign up to start.
+          Run your business by text. Landscapers, handymen, cleaners, painters, pool techs, and anyone
+          working out of a truck. Log quotes, jobs, payments, and reminders in plain language. FieldText
+          saves it and texts you back. Sign up to join the beta.
         </p>
 
         <form action={formAction} className="mt-6 space-y-4">
@@ -54,7 +55,7 @@ export default function SignupPage() {
             <input name="consent" type="checkbox" required className="mt-1 h-4 w-4 rounded border-gray-300 text-brand focus:ring-brand" />
             <span>
               I agree to receive recurring SMS text messages from <span className="font-medium">FieldText</span> at the mobile
-              number I provided, to log and manage my landscaping business — confirmations, quote/job reminders, follow-up
+              number I provided, to log and manage my business, including confirmations, quote and job reminders, follow-up
               nudges, and account notifications. Message frequency varies. Message &amp; data rates may apply. Reply{" "}
               <span className="font-semibold">STOP</span> to opt out and <span className="font-semibold">HELP</span> for help.
               Consent is not a condition of any purchase.
