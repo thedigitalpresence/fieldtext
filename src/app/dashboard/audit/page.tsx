@@ -1,12 +1,14 @@
 /**
  * HIDDEN internal audit report — /dashboard/audit
- * Not linked from anywhere; protected by the dashboard password (middleware).
- * Compiled July 3, 2026 from a 3-agent deep audit (security, code quality,
- * product/launch) + live production probes. Owner-facing, plain English.
+ * ADMIN ONLY: operators must never see this. Compiled July 3, 2026 from a
+ * 3-agent deep audit + live production probes. Owner-facing, plain English.
  */
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { currentSession } from "@/lib/supabase";
 import { ShieldCheck, AlertTriangle, Wrench, Sparkles, CheckCircle2, Clock3, Leaf, Compass } from "lucide-react";
 
+export const dynamic = "force-dynamic";
 export const metadata = { title: "FieldText — Internal Audit", robots: { index: false, follow: false } };
 
 type Sev = "critical" | "high" | "medium" | "low";
@@ -259,7 +261,9 @@ const PLAN: { when: string; items: string[] }[] = [
   ]},
 ];
 
-export default function AuditPage() {
+export default async function AuditPage() {
+  const session = await currentSession();
+  if (session?.kind !== "admin") redirect("/dashboard");
   const bySev = (s: Sev) => FINDINGS.filter((f) => f.sev === s);
   return (
     <main className="mx-auto max-w-5xl space-y-8 px-4 py-8 sm:px-6">

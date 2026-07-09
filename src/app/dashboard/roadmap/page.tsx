@@ -5,8 +5,11 @@
  * SMS conversation holes, growth/funnel, dashboard UX — plus live site probes.
  */
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { currentSession } from "@/lib/supabase";
 import { Compass, Rocket, MessageSquareText, TrendingUp, Smartphone, Zap, Ban, Leaf, ShieldCheck, CheckCircle2 } from "lucide-react";
 
+export const dynamic = "force-dynamic";
 export const metadata = { title: "FieldText — Roadmap Deep Dive", robots: { index: false, follow: false } };
 
 type Effort = "S" | "M" | "L";
@@ -126,7 +129,9 @@ function Section({ Icon, title, count, children }: { Icon: typeof Zap; title: st
   );
 }
 
-export default function RoadmapPage() {
+export default async function RoadmapPage() {
+  const session = await currentSession();
+  if (session?.kind !== "admin") redirect("/dashboard");
   return (
     <main className="mx-auto max-w-5xl space-y-8 px-4 py-8 sm:px-6">
       {/* Header */}
