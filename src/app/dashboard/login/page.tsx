@@ -5,7 +5,7 @@ import { businessLang } from "@/lib/templates";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Sign in" };
 
-export default async function LoginPage({ searchParams }: { searchParams: { error?: string; next?: string; mins?: string } }) {
+export default async function LoginPage({ searchParams }: { searchParams: { error?: string; next?: string; mins?: string; reset?: string } }) {
   // Localize the one pre-auth page too (the rest of the product is bilingual).
   let es = false;
   try {
@@ -24,12 +24,17 @@ export default async function LoginPage({ searchParams }: { searchParams: { erro
       : `Too many attempts. Try again in ${searchParams.mins ?? "15"} minutes.`,
     button: es ? "Entrar" : "Sign in",
     signup: es ? "¿No tienes cuenta? Regístrate" : "Don't have an account? Sign up",
+    forgot: es ? "¿Olvidaste tu contraseña?" : "Forgot password?",
+    resetOk: es ? "Contraseña actualizada. Inicia sesión." : "Password updated. Sign in below.",
   };
   return (
     <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center px-6" lang={es ? "es" : "en"}>
       <form action={login} className="rounded-2xl bg-white p-8 shadow-sm">
         <h1 className="text-2xl font-bold">{T.title}</h1>
         <p className="mt-1 text-sm text-gray-600">{T.sub}</p>
+        {searchParams.reset === "1" && (
+          <p className="mt-3 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-800">{T.resetOk}</p>
+        )}
         <input type="hidden" name="next" value={searchParams.next ?? "/dashboard"} />
 
         <label className="mt-5 block text-sm font-medium text-gray-600" htmlFor="phone">{T.phone}</label>
@@ -60,9 +65,10 @@ export default async function LoginPage({ searchParams }: { searchParams: { erro
         <button type="submit" className="mt-4 min-h-[44px] w-full rounded-lg bg-brand px-4 py-2.5 font-medium text-white hover:bg-brand-dark">
           {T.button}
         </button>
-        <p className="mt-4 text-center text-sm">
+        <div className="mt-4 flex flex-col items-center gap-1 text-center text-sm">
+          <a href="/dashboard/reset" className="text-gray-500 hover:text-brand hover:underline">{T.forgot}</a>
           <a href="/signup" className="text-brand hover:underline">{T.signup}</a>
-        </p>
+        </div>
       </form>
     </main>
   );

@@ -215,6 +215,10 @@ export const t = {
     lang === "es" ? `Listo ✅ ${name} está completo.` : `All set ✅ ${name} is fully saved.`,
   yesToAdd: (name: string, lang: Lang) =>
     lang === "es" ? `No encontré a "${name}". Responde SÍ para agregarlo, o manda el nombre correcto.` : `I don't know "${name}". Reply YES to add them, or send the right name.`,
+  resetCode: (code: string, lang: Lang) =>
+    lang === "es"
+      ? `Tu código para restablecer la contraseña de FieldText es ${code}. Vence en 15 minutos. Si no lo pediste, ignora este mensaje.`
+      : `Your FieldText password reset code is ${code}. It expires in 15 minutes. If you didn't request it, ignore this message.`,
   needInfo: (name: string, missing: string[], lang: Lang) => {
     const words: Record<string, [string, string]> = {
       name: ["their full name", "su nombre completo"],

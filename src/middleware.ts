@@ -10,7 +10,7 @@ export const AUTH_COOKIE = "ft_auth";
  */
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  if (pathname.startsWith("/dashboard/login")) return NextResponse.next();
+  if (pathname.startsWith("/dashboard/login") || pathname.startsWith("/dashboard/reset")) return NextResponse.next();
 
   const payload = await verifySession(req.cookies.get(AUTH_COOKIE)?.value);
   if (!payload) {

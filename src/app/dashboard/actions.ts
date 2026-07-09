@@ -71,6 +71,28 @@ export async function logout() {
   redirect("/dashboard/login");
 }
 
+/** Step 1 of SMS reset: text a code to the number (silent whether or not it exists). */
+export async function requestResetAction(_prev: unknown, formData: FormData): Promise<{ sent: boolean; phone: string; error?: string }> {
+  const phoneRaw = String(formData.get("phone") ?? "").trim();
+  const phone = toE164(phoneRaw);
+  if (!phone) return { sent: false, phone: "", error: "That phone number doesn't look right." };
+  const { requestReset } = await import("@/lib/reset");
+  await requestReset(phone);
+  return { sent: true, phone };
+}
+
+/** Step 2 of SMS reset: verify the code and set the new password. */
+export async function completeResetAction(_prev: unknown, formData: FormData): Promise<{ ok: boolean; error?: string }> {
+  const phone = toE164(String(formData.get("phone") ?? "").trim());
+  const code = String(formData.get("code") ?? "").trim();
+  const password = String(formData.get("password") ?? "");
+  if (!phone) return { ok: false, error: "Start over and enter your number again." };
+  const { completeReset } = await import("@/lib/reset");
+  const res = await completeReset(phone, code, password);
+  if (res.ok) redirect("/dashboard/login?reset=1");
+  return res;
+}
+
 /** Admin only: set/reset a business's dashboard password (grant dashboard access). */
 export async function setBusinessPassword(formData: FormData) {
   const session = parseSession(await verifySession(cookies().get(AUTH_COOKIE)?.value));
