@@ -17,9 +17,16 @@ export default function SignupPage() {
           <div className="mb-3 text-4xl">🌱</div>
           <h1 className="mb-2 text-2xl font-bold">One last step</h1>
           <p className="text-gray-600">
-            Text <span className="font-semibold">START</span> to{" "}
-            <a href="sms:+19714625343" className="font-semibold text-brand underline">(971) 462-5343</a>{" "}
-            from your phone to activate. That confirms it&apos;s really you, and your black book goes live instantly.
+            Text this code to{" "}
+            <a href={`sms:+19714625343${state.code ? `?body=${state.code}` : ""}`} className="font-semibold text-brand underline">(971) 462-5343</a>{" "}
+            from your phone to activate:
+          </p>
+          {state.code && (
+            <p className="mt-3 rounded-lg bg-brand/10 px-3 py-2 text-3xl font-bold tracking-[0.3em] text-brand">{state.code}</p>
+          )}
+          <p className="mt-3 text-sm text-gray-500">
+            That confirms it&apos;s really your number, and your black book goes live instantly. The code only works
+            from the mobile number you signed up with.
           </p>
           <p className="mt-4 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-600">
             To use the web dashboard, sign in at{" "}
@@ -48,12 +55,26 @@ export default function SignupPage() {
           <Field label="Your name" name="name" type="text" required />
           <Field label="Business name" name="business" type="text" required />
           <Field label="Mobile number" name="phone" type="tel" required placeholder="(555) 123-4567" />
-          <div>
-            <label className="mb-1 block text-sm font-medium" htmlFor="language">Language</label>
-            <select id="language" name="language" defaultValue="en" className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand">
-              <option value="en">English</option>
-              <option value="es">Español</option>
-            </select>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-sm font-medium" htmlFor="language">Language</label>
+              <select id="language" name="language" defaultValue="en" className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand">
+                <option value="en">English</option>
+                <option value="es">Español</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium" htmlFor="timezone">Time zone</label>
+              <select id="timezone" name="timezone" defaultValue="America/Los_Angeles" className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand">
+                <option value="America/Los_Angeles">Pacific</option>
+                <option value="America/Denver">Mountain</option>
+                <option value="America/Phoenix">Arizona</option>
+                <option value="America/Chicago">Central</option>
+                <option value="America/New_York">Eastern</option>
+                <option value="America/Anchorage">Alaska</option>
+                <option value="Pacific/Honolulu">Hawaii</option>
+              </select>
+            </div>
           </div>
           <div>
             <Field label="Choose a password" name="password" type="password" required placeholder="at least 6 characters" />

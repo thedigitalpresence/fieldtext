@@ -421,7 +421,7 @@ async function logQuote(business: Business, p: ParsedAction, ctx: ParseContext, 
   }
 
   if (targetStatus === "quoted") await scheduleQuoteReminders(business, client);
-  else await cancelQuoteReminders(client.id);
+  else await cancelQuoteReminders(client.id, business.id);
 
   // Missing the price? Save what we have, remember the question, ask for it.
   // (client_is_new keeps the completeness chase alive after the price arrives.)
@@ -470,7 +470,7 @@ async function updateStatus(business: Business, p: ParsedAction, ctx: ParseConte
   const patch: Partial<Client> = { ...sched };
   if (p.status) patch.status = p.status;
   await updateClient(c.id, patch);
-  if (p.status && p.status !== "quoted") await cancelQuoteReminders(c.id);
+  if (p.status && p.status !== "quoted") await cancelQuoteReminders(c.id, business.id);
   if (p.status === "completed") return t.clientCompleted(c.name, lang);
   if (p.status === "lost") return t.clientLost(c.name, lang);
 
@@ -672,7 +672,7 @@ async function pauseClient(business: Business, p: ParsedAction, session: ActionS
   const { client, ask } = await resolveClient(business, p, session, lang);
   if (!client) return ask ?? t.notFound(p.client_name ?? "", lang);
   await updateClient(client.id, { status: "paused", paused_until: p.pause_until ?? null, next_service_on: null });
-  await cancelQuoteReminders(client.id);
+  await cancelQuoteReminders(client.id, business.id);
   if (p.pause_until) {
     const resumeText = lang === "es" ? `Reanudar servicio de ${client.name}?` : `Resume service for ${client.name}?`;
     await createReminder({

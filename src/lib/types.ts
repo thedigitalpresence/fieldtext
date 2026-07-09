@@ -268,6 +268,7 @@ export interface ParsedAction {
 export interface ClientDraft {
   name: string;
   address?: string;
+  phone?: string;
   amount?: number;
   billing_period?: BillingPeriod;
   service_description?: string;

@@ -30,9 +30,8 @@ below can be done while it's pending.
 ## 1. Database — Supabase (free tier is fine)
 1. Create a project at [supabase.com](https://supabase.com).
 2. SQL editor → run the migrations **in order**:
-   `0001_init.sql`, `0002_seed.sql`, `0003_billing_and_quote_reminders.sql`,
-   `0004_production_hardening.sql`, `0005_black_book.sql`, `0006_roadmap.sql`.
-   (Or run `setup_all.sql`, which now includes all six.)
+   `0001_init.sql` through `0013_beta_hardening.sql`.
+   (Or run `setup_all.sql`, which includes all of them.)
 3. **Edit the seed** (`0002`, or update the row after): set the real business name,
    timezone, and language; set `authorized_phones.phone` to the **landscaper's real
    cell** in E.164 (e.g. `+14155551234`), `is_primary = true`.
@@ -62,7 +61,8 @@ below can be done while it's pending.
    | `CRON_SECRET` | a long random string |
    | `DASHBOARD_PASSWORD` | the dashboard password |
    | `DEFAULT_BUSINESS_SLUG` | matches your seeded `businesses.slug` |
-   | `NEXT_PUBLIC_APP_URL` | your real domain, e.g. `https://fieldtext.vercel.app` (used for Twilio signature check) |
+   | `NEXT_PUBLIC_APP_URL` | your real domain, e.g. `https://fieldtextapp.com` — must EXACTLY match the Twilio webhook URL (signature check) |
+   | `SESSION_SIGNING_SECRET` | a long random string — signs dashboard session cookies (falls back to `DASHBOARD_PASSWORD` if unset, but set it) |
 
    Optional: `FOUNDER_ALERT_PHONE` — your cell in E.164; new signups text you there.
 

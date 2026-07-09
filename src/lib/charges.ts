@@ -15,16 +15,21 @@ import { db } from "./supabase";
 import { todayInTz } from "./normalize";
 import type { Business, Charge, Client } from "./types";
 
-/** Next cycle date: weekly +7d, biweekly +14d, monthly +1 calendar month (day clamped). */
-export function nextCycleDate(ymd: string, period: string): string {
+/**
+ * Next cycle date: weekly +7d, biweekly +14d, monthly +1 calendar month (day
+ * clamped). For monthly pass anchorDay (day-of-month of the FIRST cycle charge)
+ * so a client billed on the 31st snaps back to the 31st after a short month
+ * instead of drifting to the 28th forever.
+ */
+export function nextCycleDate(ymd: string, period: string, anchorDay?: number): string {
   const [y, m, d] = ymd.split("-").map(Number);
   if (period === "weekly" || period === "biweekly") {
     const dt = new Date(Date.UTC(y, m - 1, d + (period === "weekly" ? 7 : 14)));
     return dt.toISOString().slice(0, 10);
   }
-  // monthly: same day next month, clamped to the shorter month's end
+  // monthly: anchor day next month, clamped to the shorter month's end
   const lastOfNext = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
-  const dt = new Date(Date.UTC(y, m, Math.min(d, lastOfNext)));
+  const dt = new Date(Date.UTC(y, m, Math.min(anchorDay ?? d, lastOfNext)));
   return dt.toISOString().slice(0, 10);
 }
 
@@ -44,16 +49,42 @@ export async function generateDueCharges(business: Business, now: Date = new Dat
   for (const c of (clientRows ?? []) as Client[]) {
     if (c.amount == null || !c.billing_period || !RECURRING.has(c.billing_period)) continue;
 
-    // Anchor: the day after the latest existing cycle charge, or today for a fresh client.
     const { data: lastRows } = await db()
       .from("charges").select("*")
       .eq("client_id", c.id).eq("kind", "cycle")
       .order("due_on", { ascending: false }).limit(1);
     const last = ((lastRows ?? []) as Charge[])[0];
 
-    let due = last ? nextCycleDate(last.due_on, c.billing_period) : today;
-    let guard = 0;
-    while (due <= today && guard++ < 12) {
+    // Monthly anchor day comes from the FIRST cycle charge, so short months
+    // clamp for one cycle and then snap back (no permanent 31st→28th drift).
+    let anchorDay: number | undefined;
+    if (c.billing_period === "monthly") {
+      const { data: firstRows } = await db()
+        .from("charges").select("*")
+        .eq("client_id", c.id).eq("kind", "cycle")
+        .order("due_on", { ascending: true }).limit(1);
+      const first = ((firstRows ?? []) as Charge[])[0];
+      if (first) anchorDay = Number(first.due_on.slice(8, 10));
+    }
+
+    // Anchor the next due date. A fresh client's first cycle lands one period
+    // after they were ADDED (day one is not already owed — the anchor must be
+    // their fixed created date, not "today", or it re-anchors every run and
+    // never comes due). A client with history advances from their latest
+    // charge; if MULTIPLE cycles have elapsed (paused-then-resumed, long
+    // outage) we fast-forward to the most recent cycle date instead of
+    // back-billing the whole gap.
+    const startYmd = (c.created_at ?? "").slice(0, 10) || today;
+    let due = last
+      ? nextCycleDate(last.due_on, c.billing_period, anchorDay)
+      : nextCycleDate(startYmd, c.billing_period);
+    let next = nextCycleDate(due, c.billing_period, anchorDay);
+    while (next <= today) {
+      due = next;
+      next = nextCycleDate(due, c.billing_period, anchorDay);
+    }
+
+    if (due <= today) {
       const { data: existing } = await db()
         .from("charges").select("id").eq("client_id", c.id).eq("kind", "cycle").eq("due_on", due).limit(1);
       if (!((existing ?? []) as unknown[]).length) {
@@ -69,7 +100,6 @@ export async function generateDueCharges(business: Business, now: Date = new Dat
         });
         created++;
       }
-      due = nextCycleDate(due, c.billing_period);
     }
   }
   return created;

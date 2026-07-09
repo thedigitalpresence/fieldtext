@@ -10,6 +10,7 @@ import { createReminder, cancelQuoteReminders } from "@/lib/reminders";
 import { signSession, verifySession, parseSession } from "@/lib/auth";
 import { hashPassword, verifyPassword, safeEqual } from "@/lib/password";
 import { throttleStatus, recordFailure, clearFailures } from "@/lib/security";
+import { applyPaymentToCharges } from "@/lib/charges";
 import { normalizeAmount, normalizeName, normalizeAddress } from "@/lib/normalize";
 import { toE164 } from "@/lib/phone";
 import type { ChargeStatus, ClientStatus, Lang } from "@/lib/types";
@@ -32,37 +33,41 @@ export async function login(formData: FormData) {
 
   if (!password) fail();
 
-  // Rate limit per identifier (phone, or "admin" for the master key attempt).
   const phone = toE164(phoneRaw);
-  const idKey = phone ?? "admin";
-  const locked = await throttleStatus(idKey);
-  if (locked > 0) fail(locked);
 
-  // Founder master key → admin session (phone not needed).
-  if (safeEqual(password, config.dashboardPassword())) {
-    await clearFailures(idKey);
+  // Founder master key → admin session (phone not needed). The master-key check
+  // runs on EVERY login, so its throttle must be a FIXED global bucket — keyed
+  // per-phone it could be bypassed by rotating phone numbers. Generous limit
+  // (paired with alertFounder on lock) balances brute-force vs founder DoS.
+  const masterLocked = await throttleStatus("admin-master");
+  if (masterLocked === 0 && safeEqual(password, config.dashboardPassword())) {
     cookies().set(AUTH_COOKIE, await signSession("admin"), COOKIE_OPTS);
     redirect(dest);
   }
 
   // Operator: their PHONE NUMBER is the username, matched to their business.
+  // Web login is the OWNER's (primary phone) — crew phones text, they don't log in.
   if (phone) {
-    const { data: ap } = await db().from("authorized_phones").select("business_id").eq("phone", phone).maybeSingle();
+    const phoneLocked = await throttleStatus(phone);
+    if (phoneLocked > 0) fail(phoneLocked);
+    const { data: ap } = await db().from("authorized_phones").select("business_id").eq("phone", phone).eq("is_primary", true).maybeSingle();
     const businessId = (ap as { business_id: string } | null)?.business_id;
     if (businessId) {
       const { data: biz } = await db().from("businesses").select("dashboard_password").eq("id", businessId).maybeSingle();
       const stored = (biz as { dashboard_password: string | null } | null)?.dashboard_password;
       if (verifyPassword(password, stored)) {
-        await clearFailures(idKey);
+        await clearFailures(phone);
         cookies().set(AUTH_COOKIE, await signSession(`b:${businessId}`), COOKIE_OPTS);
         cookies().delete("ft_biz");
         redirect(dest);
       }
     }
+    await recordFailure(phone);
   }
-
-  await recordFailure(idKey);
-  fail();
+  // Every failed login also counts against the master bucket (the master key was
+  // implicitly tested above), with a generous threshold.
+  await recordFailure("admin-master", 30);
+  fail(masterLocked > 0 ? masterLocked : undefined);
 }
 
 export async function logout() {
@@ -173,8 +178,15 @@ export async function markStatus(formData: FormData) {
   const status = String(formData.get("status")) as ClientStatus;
   const b = await currentBusiness();
   await db().from("clients").update({ status, updated_at: new Date().toISOString() }).eq("id", clientId).eq("business_id", b.id);
-  if (status !== "quoted") await cancelQuoteReminders(clientId);
+  if (status !== "quoted") await cancelQuoteReminders(clientId, b.id);
   revalidatePath("/dashboard");
+}
+
+/** True only if the client row belongs to this business (clientId is a form value — never trust it). */
+async function ownsClient(businessId: string, clientId: string): Promise<boolean> {
+  if (!clientId) return false;
+  const { data } = await db().from("clients").select("id").eq("id", clientId).eq("business_id", businessId).maybeSingle();
+  return !!data;
 }
 
 export async function addNote(formData: FormData) {
@@ -182,8 +194,9 @@ export async function addNote(formData: FormData) {
   const note = String(formData.get("note") ?? "").trim();
   if (!note) return;
   const b = await currentBusiness();
-  const { data } = await db().from("clients").select("notes").eq("id", clientId).single();
-  const existing = (data as { notes: string | null } | null)?.notes ?? "";
+  const { data } = await db().from("clients").select("notes").eq("id", clientId).eq("business_id", b.id).maybeSingle();
+  if (!data) return;
+  const existing = (data as { notes: string | null }).notes ?? "";
   const merged = existing ? `${existing}\n${note}` : note;
   await db().from("clients").update({ notes: merged, updated_at: new Date().toISOString() }).eq("id", clientId).eq("business_id", b.id);
   revalidatePath("/dashboard");
@@ -194,6 +207,7 @@ export async function addReminderAction(formData: FormData) {
   const text = String(formData.get("text") ?? "").trim();
   if (!text) return;
   const b = await currentBusiness();
+  if (!(await ownsClient(b.id, clientId))) return;
   const due = new Date();
   due.setDate(due.getDate() + 3);
   due.setHours(9, 0, 0, 0);
@@ -206,7 +220,11 @@ export async function logPayment(formData: FormData) {
   const amount = normalizeAmount(String(formData.get("amount") ?? ""));
   if (amount == null) return;
   const b = await currentBusiness();
+  if (!(await ownsClient(b.id, clientId))) return;
   await db().from("payments").insert({ business_id: b.id, client_id: clientId, amount, paid_on: new Date().toISOString().slice(0, 10) });
+  // Settle open charges oldest-first so the dashboard payment moves "Money owed"
+  // exactly like the texted "bob paid 300" does.
+  await applyPaymentToCharges(b.id, clientId, amount);
   revalidatePath("/dashboard");
 }
 

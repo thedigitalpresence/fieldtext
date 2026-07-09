@@ -40,11 +40,16 @@ export async function handleInbound(params: InboundParams): Promise<InboundOutco
   const fromE164 = toE164(params.from) ?? params.from;
   const body = (params.body || "").trim();
 
+  const kw = body.toLowerCase().replace(/[^a-zà-ÿ]/g, "");
+
   let authPhone = await findAuthorizedPhone(fromE164);
   if (!authPhone) {
-    // Self-service: an unknown number that filled the consent form and is now
-    // texting = double opt-in complete. Create their book and keep going.
-    const activated = await activateSignup(fromE164);
+    // Never activate on an opt-out word — someone texting STOP is refusing
+    // service, not completing a signup.
+    if (STOP_WORDS.has(kw)) return { twiml: EMPTY_TWIML, authorized: false };
+    // Self-service: a pending signup activates ONLY with its activation code
+    // in the text (proves form-filler == phone owner; blocks squatting).
+    const activated = await activateSignup(fromE164, body);
     if (activated) {
       authPhone = activated;
       const alertTo = process.env.FOUNDER_ALERT_PHONE || process.env.OWNER_PHONE;
@@ -61,8 +66,7 @@ export async function handleInbound(params: InboundParams): Promise<InboundOutco
   // Per-phone language override (ES crew phone, EN owner phone).
   const lang: Lang = (authPhone.language as Lang) ?? businessLang(business);
 
-  // ── A2P compliance: STOP / START ────────────────────────────────────────────
-  const kw = body.toLowerCase().replace(/[^a-zà-ÿ]/g, "");
+  // ── A2P compliance: STOP / START / HELP ──────────────────────────────────────
   if (STOP_WORDS.has(kw)) {
     await db().from("authorized_phones").update({ opted_out: true }).eq("id", authPhone.id);
     await logMessage({ businessId: business.id, direction: "inbound", fromPhone: fromE164, body, intent: "stop", externalId: params.messageSid });
@@ -76,10 +80,32 @@ export async function handleInbound(params: InboundParams): Promise<InboundOutco
     }
     return { twiml: EMPTY_TWIML, authorized: true }; // opted out — ignore everything else
   }
+  // HELP must be deterministic (carriers test it mechanically) — never left to
+  // the parser. Also handles the signup instruction "text START" for a phone
+  // that isn't opted out (it just activated): welcome them instead of confusion.
+  if (kw === "help" || kw === "ayuda" || kw === "info") {
+    await logMessage({ businessId: business.id, direction: "inbound", fromPhone: fromE164, body, intent: "help", externalId: params.messageSid });
+    return { twiml: replyTwiml(t.helpHint(lang)), authorized: true };
+  }
+  if (START_WORDS.has(kw)) {
+    await logMessage({ businessId: business.id, direction: "inbound", fromPhone: fromE164, body, intent: "start", externalId: params.messageSid });
+    return { twiml: replyTwiml(`${t.welcome(business.owner_name, lang)}`), authorized: true };
+  }
   // "cancel"/"end"/"quit" alone: ask what they meant instead of unsubscribing.
   if (AMBIGUOUS_STOP.has(kw)) {
     await logMessage({ businessId: business.id, direction: "inbound", fromPhone: fromE164, body, intent: "help", externalId: params.messageSid });
     return { twiml: replyTwiml(t.cancelWhat(lang)), authorized: true };
+  }
+
+  // ── Spend guard: hard daily per-phone cap (auto-reply loops, abuse) ──────────
+  const dayAgo = new Date(Date.now() - 86400000).toISOString();
+  const { data: recent } = await db()
+    .from("messages").select("id").eq("business_id", business.id)
+    .eq("direction", "inbound").eq("from_phone", fromE164).gte("created_at", dayAgo).limit(80);
+  if (((recent ?? []) as unknown[]).length >= 75) {
+    const { alertFounder } = await import("./security");
+    await alertFounder(`cap:${fromE164}`, `phone ...${fromE164.slice(-4)} hit the 75 msgs/day cap`);
+    return { twiml: EMPTY_TWIML, authorized: true }; // go quiet — never reply-loop
   }
 
   // ── Idempotency: Twilio retries webhooks; never double-process a MessageSid ──
@@ -98,8 +124,11 @@ export async function handleInbound(params: InboundParams): Promise<InboundOutco
   // ── Photo texted in: attach to a client (or ask whose site it is) ───────────
   const media = (params.media ?? []).slice(0, 10);
   if ((params.numMedia ?? 0) > 0 && media.length > 0) {
-    await logMessage({ businessId: business.id, direction: "inbound", fromPhone: fromE164, body: body || "(photo)", intent: "photo", externalId: params.messageSid });
+    const inId = await logMessage({ businessId: business.id, direction: "inbound", fromPhone: fromE164, body: body || "(photo)", intent: "photo", externalId: params.messageSid });
+    await logSms(business, { direction: "inbound", body: body || "(photo)", messageId: inId });
     const reply = await handlePhoto(business, authPhone.id, media, body, lang);
+    const outId = await logMessage({ businessId: business.id, direction: "outbound", body: reply });
+    await logSms(business, { direction: "outbound", body: reply, messageId: outId });
     return { twiml: replyTwiml(reply), authorized: true };
   }
 

@@ -190,6 +190,7 @@ export async function createClient(
       business_id: businessId,
       name: fields.name,
       address: fields.address ?? null,
+      phone: fields.phone ?? null,
       status: fields.status ?? "quoted",
       service_description: fields.service_description ?? null,
       amount: fields.amount ?? null,

@@ -20,10 +20,11 @@ async function fresh() {
   fs.rmSync(TEST_DB_FILE, { force: true });
   await db().from("businesses").select("*"); // trigger seed
 }
-async function pendingSignup(phone: string, lang: string, name = "Miguel Torres", biz = "Torres Lawn Care", password = "secret123") {
+async function pendingSignup(phone: string, lang: string, name = "Miguel Torres", biz = "Torres Lawn Care", password = "secret123", activationCode?: string) {
   const { hashPassword } = await import("../password");
   await db().from("signups").insert({
     name, business_name: biz, phone, language: lang, status: "pending", dashboard_password: hashPassword(password),
+    activation_code: activationCode ? hashPassword(activationCode) : null,
     consent_text: "I agree to receive SMS…", consented_at: new Date().toISOString(), ip: "1.2.3.4",
   });
 }
@@ -74,6 +75,41 @@ test("two self-registered operators stay fully isolated", async () => {
   assert.deepEqual(a, ["The Smiths"]);
   assert.equal(b.length, 1);
   assert.ok(!a.some((n) => b.includes(n)), "no crossover between operators");
+});
+
+test("a signup with an activation code needs the CODE, not just any text (anti-squatting)", async () => {
+  await fresh();
+  await pendingSignup("+15553330005", "en", "Real Owner", "Real Co", "secret123", "482913");
+  // The victim texting anything else must NOT hand the attacker their account.
+  let out = await say("+15553330005", "hey what is this number?");
+  assert.equal(out.authorized, false, "ordinary text does not activate");
+  let { data: biz } = await db().from("businesses").select("*").eq("slug", "real-co").maybeSingle();
+  assert.equal(biz, null, "no business created without the code");
+  // A wrong 6-digit guess doesn't activate either.
+  out = await say("+15553330005", "111111");
+  assert.equal(out.authorized, false, "wrong code does not activate");
+  // Texting the code from the success screen activates.
+  out = await say("+15553330005", "482913");
+  assert.equal(out.authorized, true, "the real code activates");
+  const { data: signup } = await db().from("signups").select("*").eq("phone", "+15553330005").single();
+  assert.equal((signup as any).status, "activated");
+});
+
+test("75 inbound texts in a day trips the per-phone cap and goes quiet", async () => {
+  await fresh();
+  await pendingSignup("+15553330006", "en", "Busy Bee", "Bee Co");
+  await say("+15553330006", "quoted bob at 1 main for 100/mo"); // activates
+  const { data: biz } = await db().from("businesses").select("*").eq("slug", "bee-co").single();
+  // Backfill today's traffic right up to the cap.
+  const now = new Date().toISOString();
+  for (let i = 0; i < 75; i++) {
+    await db().from("messages").insert({
+      business_id: (biz as any).id, direction: "inbound", from_phone: "+15553330006",
+      body: `msg ${i}`, created_at: now,
+    });
+  }
+  const out = await say("+15553330006", "who are my clients?");
+  assert.ok(!/<Message>/.test(out.twiml), "over the cap: no reply at all (never fuels a loop)");
 });
 
 test("a signup can't hijack an already-registered phone", async () => {

@@ -51,6 +51,15 @@ export async function saveMedia(
   for (const m of media.slice(0, 10)) {
     let path = m.url;
     if (!config.testMode()) {
+      // Only ever fetch Twilio-hosted media: the URL arrives in webhook params,
+      // and we attach our account credentials to the request — never let a
+      // forged URL point that at an internal or attacker host (SSRF).
+      let host = "";
+      try { host = new URL(m.url).hostname; } catch { /* not a URL */ }
+      if (!/(^|\.)twilio\.com$/i.test(host)) {
+        console.error(`[attachments] refusing non-Twilio media host: ${host || "(invalid url)"}`);
+        continue;
+      }
       await ensureBucket();
       // Twilio media requires basic auth with the account credentials.
       const auth = Buffer.from(`${config.twilio.accountSid()}:${config.twilio.authToken()}`).toString("base64");
@@ -89,10 +98,15 @@ export async function listPhotos(businessId: string): Promise<{ id: string; clie
   if (config.testMode()) {
     return rows.map((a) => ({ id: a.id, clientId: a.client_id, url: a.storage_path, caption: a.caption }));
   }
+  if (!rows.length) return [];
+  // One batched signing call instead of one round-trip per photo.
+  const { data: signed } = await storage().storage.from(BUCKET)
+    .createSignedUrls(rows.map((a) => a.storage_path), 3600);
+  const byPath = new Map((signed ?? []).filter((s) => s.signedUrl).map((s) => [s.path, s.signedUrl]));
   const out: { id: string; clientId: string | null; url: string; caption: string | null }[] = [];
   for (const a of rows) {
-    const { data: signed } = await storage().storage.from(BUCKET).createSignedUrl(a.storage_path, 3600);
-    if (signed?.signedUrl) out.push({ id: a.id, clientId: a.client_id, url: signed.signedUrl, caption: a.caption });
+    const url = byPath.get(a.storage_path);
+    if (url) out.push({ id: a.id, clientId: a.client_id, url, caption: a.caption });
   }
   return out;
 }

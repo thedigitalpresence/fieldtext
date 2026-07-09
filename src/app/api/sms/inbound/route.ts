@@ -5,6 +5,7 @@ import { config } from "@/lib/config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 30;
 
 const XML_HEADERS = { "Content-Type": "text/xml" };
 

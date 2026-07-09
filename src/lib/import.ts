@@ -14,8 +14,8 @@ import {
   normalizeName, normalizeAddress, normalizeAmount, normalizePeriod, normalizeService,
   normalizeServiceInterval, normalizeWeekday, NormalizeContext,
 } from "./normalize";
-import { createClient } from "./clients";
-import type { Business, ClientDraft } from "./types";
+import { createClient, updateClient, listClients } from "./clients";
+import type { Business, Client, ClientDraft } from "./types";
 
 let _anthropic: Anthropic | null = null;
 function anthropic() {
@@ -30,6 +30,7 @@ function normalizeDraft(raw: Record<string, any>): ClientDraft | null {
   return {
     name,
     address: normalizeAddress(raw.address != null ? String(raw.address) : undefined),
+    phone: raw.phone != null && String(raw.phone).trim() ? String(raw.phone).trim() : undefined,
     amount: raw.amount != null ? normalizeAmount(raw.amount) : undefined,
     billing_period: normalizePeriod(raw.billing_period != null ? String(raw.billing_period) : undefined),
     service_description: normalizeService(raw.service_description != null ? String(raw.service_description) : undefined),
@@ -102,6 +103,7 @@ function splitCsvLine(line: string): string[] {
 const HEADER_MAP: Record<string, keyof ClientDraft> = {
   name: "name", client: "name", customer: "name",
   address: "address", addr: "address", location: "address",
+  phone: "phone", mobile: "phone", cell: "phone", tel: "phone", telephone: "phone",
   amount: "amount", price: "amount", rate: "amount", cost: "amount",
   period: "billing_period", billing: "billing_period", frequency: "billing_period",
   service: "service_description", description: "service_description", notes: "service_description",
@@ -129,6 +131,7 @@ export function parseCsv(text: string): ClientDraft[] {
 const DRAFT_PROPS = {
   name: { type: "string" },
   address: { type: "string" },
+  phone: { type: "string", description: "Client's phone number if present." },
   amount: { type: "number", description: "Numeric, no $." },
   billing_period: { type: "string", enum: ["one_time", "weekly", "biweekly", "monthly"] },
   service_description: { type: "string" },
@@ -190,14 +193,37 @@ function draftsFromResponse(resp: Anthropic.Message): ClientDraft[] {
 }
 
 // ── Commit reviewed drafts ────────────────────────────────────────────────────
+/**
+ * Save reviewed drafts. Re-importing the same list must not duplicate the book:
+ * a draft whose name matches an existing client (exact, case-insensitive)
+ * UPDATES that client's blanks instead of inserting a twin.
+ */
 export async function commitDrafts(business: Business, drafts: ClientDraft[]): Promise<number> {
+  const existing = await listClients(business.id);
+  const byName = new Map(existing.map((c) => [c.name.trim().toLowerCase(), c]));
   let n = 0;
   for (const d of drafts) {
     const name = normalizeName(d.name);
     if (!name) continue;
-    await createClient(business.id, {
+    const match = byName.get(name.trim().toLowerCase());
+    if (match) {
+      // Fill blanks only — the operator's live edits beat the import file.
+      const patch: Partial<Client> = {};
+      if (!match.address && d.address) patch.address = d.address;
+      if (!match.phone && d.phone) patch.phone = d.phone;
+      if (match.amount == null && d.amount != null) patch.amount = d.amount;
+      if (!match.billing_period && d.billing_period) patch.billing_period = d.billing_period;
+      if (!match.service_description && d.service_description) patch.service_description = d.service_description;
+      if (!match.service_interval && d.service_interval) patch.service_interval = d.service_interval;
+      if (!match.service_day && d.service_day) patch.service_day = d.service_day;
+      if (Object.keys(patch).length) await updateClient(match.id, patch);
+      n++;
+      continue;
+    }
+    const created = await createClient(business.id, {
       name,
       address: d.address ?? null,
+      phone: d.phone ?? null,
       amount: d.amount ?? null,
       billing_period: d.billing_period ?? null,
       service_description: d.service_description ?? null,
@@ -205,6 +231,8 @@ export async function commitDrafts(business: Business, drafts: ClientDraft[]): P
       service_day: d.service_day ?? null,
       status: d.status ?? "active",
     });
+    // A duplicate name INSIDE one import batch also merges instead of twinning.
+    byName.set(name.trim().toLowerCase(), created);
     n++;
   }
   return n;

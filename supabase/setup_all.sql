@@ -364,3 +364,9 @@ create table if not exists password_resets (
 );
 
 alter table password_resets enable row level security;
+-- 0013_beta_hardening.sql — pre-beta security fixes.
+-- Activation code: self-signups must text this code (shown only on the signup
+-- success screen) to activate — proves form-filler AND phone-owner are the same
+-- person, killing signup-squatting.
+alter table signups add column if not exists activation_code text;
+alter table signups add column if not exists timezone text;

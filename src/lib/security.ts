@@ -25,14 +25,17 @@ export async function throttleStatus(idKey: string): Promise<number> {
   return ms > 0 ? Math.ceil(ms / 60000) : 0;
 }
 
-export async function recordFailure(idKey: string): Promise<void> {
+export async function recordFailure(idKey: string, maxFails: number = MAX_FAILS): Promise<void> {
   const { data } = await db().from("auth_throttle").select("*").eq("id_key", idKey).maybeSingle();
   const row = data as ThrottleRow | null;
   const fails = (row?.fails ?? 0) + 1;
-  const locked = fails >= MAX_FAILS ? new Date(Date.now() + LOCK_MINUTES * 60000).toISOString() : null;
+  const locked = fails >= maxFails ? new Date(Date.now() + LOCK_MINUTES * 60000).toISOString() : null;
   const patch = { id_key: idKey, fails: locked ? 0 : fails, locked_until: locked, updated_at: new Date().toISOString() };
   if (row) await db().from("auth_throttle").update(patch).eq("id_key", idKey);
   else await db().from("auth_throttle").insert(patch);
+  if (locked && (idKey === "admin-master" || idKey === "admin")) {
+    await alertFounder("lockout", `repeated failed admin login attempts — locked ${LOCK_MINUTES} min. Someone may be guessing your master password.`);
+  }
 }
 
 export async function clearFailures(idKey: string): Promise<void> {

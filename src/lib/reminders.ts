@@ -40,7 +40,7 @@ export async function createReminder(args: {
  * pending sequence for this client first (so re-quoting resets the clock).
  */
 export async function scheduleQuoteReminders(business: Business, client: Client): Promise<string[]> {
-  await cancelQuoteReminders(client.id);
+  await cancelQuoteReminders(client.id, business.id);
   const lang = businessLang(business);
   const days = business.settings?.quote_reminder_days ?? [2, 5, 7, 14];
   const now = Date.now();
@@ -57,14 +57,17 @@ export async function scheduleQuoteReminders(business: Business, client: Client)
 }
 
 /** Stop a client's pending quote follow-up sequence. Returns how many were cancelled. */
-export async function cancelQuoteReminders(clientId: string): Promise<number> {
-  const { data } = await db()
+export async function cancelQuoteReminders(clientId: string, businessId?: string): Promise<number> {
+  let q = db()
     .from("reminders")
     .update({ status: "cancelled" })
     .eq("client_id", clientId)
     .eq("kind", "quote_followup")
-    .eq("status", "pending")
-    .select("id");
+    .eq("status", "pending");
+  // Tenant scoping: clientId can be a client-controlled form value — never let
+  // it cancel another business's reminders.
+  if (businessId) q = q.eq("business_id", businessId);
+  const { data } = await q.select("id");
   return (data ?? []).length;
 }
 
@@ -202,6 +205,8 @@ async function maybeSendDaySheet(business: Business, now: Date): Promise<boolean
   const stops = ((activeRows ?? []) as Client[]).filter((c) => c.next_service_on && c.next_service_on <= localDate);
   const oneOffs = ((jobRows ?? []) as Job[]).filter((j) => j.scheduled_on && j.scheduled_on <= localDate);
   const todays = ((pending ?? []) as Reminder[]).filter((r) => todayInTz(business.timezone, new Date(r.due_at)) === localDate);
+  // Nothing on the books today → stay quiet instead of texting "no stops" daily.
+  if (!stops.length && !oneOffs.length && !todays.length) return false;
 
   const build = (lang: Lang): string => {
     const lines = [lang === "es" ? `☀️ Hoja del día — ${business.name}` : `☀️ Day sheet — ${business.name}`];
@@ -247,6 +252,8 @@ async function maybeSendWeekly(business: Business, now: Date): Promise<boolean> 
   const quoted = (quotedRows ?? []) as Client[];
   const potential = quoted.reduce((s, c) => s + (Number(c.amount) || 0), 0);
   const outstanding = await totalOutstanding(business.id);
+  // Empty book → "0 open quotes" every Monday reads as spam. Stay quiet.
+  if (!quoted.length && outstanding <= 0.004) return false;
 
   const lines = lang === "es"
     ? [`📋 Semana — ${business.name}:`, `• ${quoted.length} cotización(es) abiertas${potential ? ` por ${money(potential)}` : ""}`]

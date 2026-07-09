@@ -137,7 +137,7 @@ npm run dev   # http://localhost:3000
 1. Push to GitHub, import into Vercel.
 2. Add all env vars (Production + Preview); set `NEXT_PUBLIC_APP_URL` to your domain
    (used for the Twilio signature check).
-3. Deploy — `vercel.json` registers the cron (`/api/cron/run-due` every 5 min);
+3. Deploy — `vercel.json` registers the crons (`/api/cron/run-due` daily, `/api/cron/backup` weekly; add an external pinger like cron-job.org to hit run-due more often);
    Vercel sends `Authorization: Bearer $CRON_SECRET`, which the endpoint verifies.
 4. Point the Twilio inbound webhook at your production URL.
 

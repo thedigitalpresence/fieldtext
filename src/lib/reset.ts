@@ -25,9 +25,18 @@ interface ResetRow {
  * or not the number exists (no account enumeration). Respects a resend cooldown.
  */
 export async function requestReset(phone: string): Promise<void> {
-  const { data: ap } = await db().from("authorized_phones").select("business_id").eq("phone", phone).maybeSingle();
+  // Primary phone only: the dashboard password belongs to the OWNER. A crew
+  // phone on the account must not be able to reset (and thus take over) it.
+  const { data: ap } = await db().from("authorized_phones").select("business_id")
+    .eq("phone", phone).eq("is_primary", true).maybeSingle();
   const businessId = (ap as { business_id: string } | null)?.business_id;
   if (!businessId) return; // unknown number: stay silent
+
+  // Daily cap on reset texts per phone (on top of the 60s cooldown) so the
+  // form can't be scripted into an SMS-bombing tool.
+  const { throttleStatus, recordFailure } = await import("./security");
+  if ((await throttleStatus(`reset:${phone}`)) > 0) return;
+  await recordFailure(`reset:${phone}`);
 
   const { data: existing } = await db().from("password_resets").select("*").eq("phone", phone).maybeSingle();
   const prev = existing as ResetRow | null;

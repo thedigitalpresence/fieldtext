@@ -18,10 +18,17 @@ function b64url(buf: ArrayBuffer): string {
   return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
+function signingSecret(): string {
+  // Prefer a dedicated secret so the admin login password is never also the
+  // token-forging key. Falls back to DASHBOARD_PASSWORD if unset (works, but
+  // set SESSION_SIGNING_SECRET in prod).
+  return process.env.SESSION_SIGNING_SECRET || config.dashboardPassword();
+}
+
 async function hmac(payload: string): Promise<string> {
   const key = await crypto.subtle.importKey(
     "raw",
-    enc.encode(config.dashboardPassword()),
+    enc.encode(signingSecret()),
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign"]
@@ -30,22 +37,32 @@ async function hmac(payload: string): Promise<string> {
   return b64url(sig);
 }
 
+const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
 export async function signSession(payload: string): Promise<string> {
-  return `${payload}.${await hmac(payload)}`;
+  // Expiry lives INSIDE the signed payload — a stolen token dies on schedule
+  // even if the client ignores cookie maxAge.
+  const withExp = `${payload}|${Date.now() + SESSION_TTL_MS}`;
+  return `${withExp}.${await hmac(withExp)}`;
 }
 
-/** Returns the payload if the signature is valid, else null. */
+/** Returns the (exp-stripped) payload if the signature is valid and unexpired, else null. */
 export async function verifySession(token: string | undefined | null): Promise<string | null> {
   if (!token) return null;
   const dot = token.lastIndexOf(".");
   if (dot < 1) return null;
-  const payload = token.slice(0, dot);
+  const signed = token.slice(0, dot);
   const sig = token.slice(dot + 1);
-  const expected = await hmac(payload);
+  const expected = await hmac(signed);
   if (sig.length !== expected.length) return null;
   let diff = 0;
   for (let i = 0; i < sig.length; i++) diff |= sig.charCodeAt(i) ^ expected.charCodeAt(i);
-  return diff === 0 ? payload : null;
+  if (diff !== 0) return null;
+  const bar = signed.lastIndexOf("|");
+  if (bar < 1) return null;
+  const exp = Number(signed.slice(bar + 1));
+  if (!Number.isFinite(exp) || Date.now() > exp) return null;
+  return signed.slice(0, bar);
 }
 
 export type Session = { kind: "admin" } | { kind: "business"; businessId: string };

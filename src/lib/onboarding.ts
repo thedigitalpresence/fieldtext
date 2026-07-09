@@ -11,6 +11,7 @@ import type { AuthorizedPhone, Lang } from "./types";
 interface Signup {
   id: string; name: string | null; business_name: string | null; phone: string | null;
   language: string | null; status: string; dashboard_password: string | null;
+  activation_code: string | null; timezone?: string | null;
 }
 
 function slugify(s: string): string {
@@ -31,11 +32,24 @@ async function uniqueSlug(base: string): Promise<string> {
  * Activate a consented signup for this phone, returning the new authorized phone
  * (so the inbound handler can process the very same message). null if no pending
  * signup matches.
+ *
+ * SECURITY: when the signup has an activation_code, the text must contain it.
+ * The code is shown only on the signup success screen — so activation proves the
+ * texter both filled the form AND controls the phone. Without this, an attacker
+ * could pre-register a stranger's number with an attacker-chosen password and
+ * silently capture their account when the stranger ever texts the number.
  */
-export async function activateSignup(phone: string): Promise<AuthorizedPhone | null> {
+export async function activateSignup(phone: string, messageBody = ""): Promise<AuthorizedPhone | null> {
   const { data } = await db().from("signups").select("*").eq("phone", phone).eq("status", "pending").limit(1);
   const signup = ((data ?? []) as Signup[])[0];
   if (!signup) return null;
+
+  if (signup.activation_code) {
+    const { verifyPassword } = await import("./password");
+    const digits = messageBody.match(/\d{6}/g) ?? [];
+    const codeOk = digits.some((d) => verifyPassword(d, signup.activation_code));
+    if (!codeOk) return null; // not the activation text — stay silent
+  }
 
   const lang: Lang = signup.language === "es" ? "es" : "en";
   const now = new Date().toISOString();
@@ -44,9 +58,10 @@ export async function activateSignup(phone: string): Promise<AuthorizedPhone | n
   const slug = await uniqueSlug(slugify(signup.business_name || name));
 
   const { data: biz, error } = await db().from("businesses").insert({
-    slug, name: bizName, owner_name: name, timezone: "America/Los_Angeles",
-    dashboard_password: signup.dashboard_password ?? null, // lets them sign in on the web
-    settings: { language: lang, quote_reminder_days: [2, 5, 7, 14], weekly_digest_enabled: true },
+    slug, name: bizName, owner_name: name,
+    timezone: signup.timezone || "America/Los_Angeles",
+    dashboard_password: signup.dashboard_password ?? null, // safe: activation code proved phone control
+    settings: { language: lang, quote_reminder_days: [2, 5, 7, 14], weekly_digest_enabled: true, digest_enabled: true, digest_hour: 7 },
     created_at: now,
   }).select("*").single();
   if (error || !biz) {

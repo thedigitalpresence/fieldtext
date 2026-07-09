@@ -70,7 +70,8 @@ export async function GET(req: NextRequest) {
   }
 
   const today = new Date().toISOString().slice(0, 10);
-  return new NextResponse(csv, {
+  // UTF-8 BOM so Excel renders accented client names (García) correctly.
+  return new NextResponse("\uFEFF" + csv, {
     status: 200,
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
