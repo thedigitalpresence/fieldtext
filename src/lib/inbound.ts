@@ -4,7 +4,8 @@ import { parseMessage, ParseContext } from "./anthropic";
 import { executeParsed, resolvePending, ActionSession } from "./intents";
 import { listClients, findClientInPhrase } from "./clients";
 import { saveMedia, InboundMedia } from "./attachments";
-import { logMessage } from "./twilio";
+import { activateSignup } from "./onboarding";
+import { sendSms, logMessage } from "./twilio";
 import { logSms, logLlm } from "./billing";
 import { businessLang, t } from "./templates";
 import type { Business, Lang, PendingState } from "./types";
@@ -39,10 +40,21 @@ export async function handleInbound(params: InboundParams): Promise<InboundOutco
   const fromE164 = toE164(params.from) ?? params.from;
   const body = (params.body || "").trim();
 
-  const authPhone = await findAuthorizedPhone(fromE164);
+  let authPhone = await findAuthorizedPhone(fromE164);
   if (!authPhone) {
-    console.warn(`[inbound] ignoring text from unauthorized number ending ...${fromE164.slice(-4)}`);
-    return { twiml: EMPTY_TWIML, authorized: false };
+    // Self-service: an unknown number that filled the consent form and is now
+    // texting = double opt-in complete. Create their book and keep going.
+    const activated = await activateSignup(fromE164);
+    if (activated) {
+      authPhone = activated;
+      const alertTo = process.env.FOUNDER_ALERT_PHONE || process.env.OWNER_PHONE;
+      if (alertTo) {
+        try { await sendSms(alertTo, `🌱 New FieldText operator just activated: ...${fromE164.slice(-4)}`); } catch { /* best effort */ }
+      }
+    } else {
+      console.warn(`[inbound] ignoring text from unauthorized number ending ...${fromE164.slice(-4)}`);
+      return { twiml: EMPTY_TWIML, authorized: false };
+    }
   }
 
   const business = await getBusinessById(authPhone.business_id);

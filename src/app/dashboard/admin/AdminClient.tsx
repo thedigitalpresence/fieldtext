@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useFormState, useFormStatus } from "react-dom";
 import { UserPlus, ArrowLeft, Check, Eye } from "lucide-react";
-import { registerOperator, switchBusiness } from "../actions";
+import { registerOperator, switchBusiness, setBusinessPassword } from "../actions";
 
 type Row = { id: string; name: string; owner: string; lang: string; phone: string; hasPassword: boolean };
 type Result = { ok: boolean; error?: string; slug?: string } | null;
@@ -74,16 +74,23 @@ export default function AdminClient({ businesses }: { businesses: Row[] }) {
         <h2 className="mb-3 text-base font-bold text-gray-900">All operators ({businesses.length})</h2>
         <div className="divide-y divide-gray-50 overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
           {businesses.map((b) => (
-            <div key={b.id} className="flex items-center justify-between gap-3 px-4 py-3">
-              <div className="min-w-0">
-                <p className="truncate font-semibold text-gray-900">{b.name} <span className="ml-1 rounded bg-gray-100 px-1.5 text-xs font-medium text-gray-500">{b.lang}</span></p>
-                <p className="truncate text-xs text-gray-500">{b.owner} · {b.phone}{!b.hasPassword && " · no dashboard password"}</p>
+            <div key={b.id} className="px-4 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate font-semibold text-gray-900">{b.name} <span className="ml-1 rounded bg-gray-100 px-1.5 text-xs font-medium text-gray-500">{b.lang}</span></p>
+                  <p className="truncate text-xs text-gray-500">{b.owner} · {b.phone}{!b.hasPassword && " · no dashboard login yet"}</p>
+                </div>
+                <form action={switchBusiness}>
+                  <input type="hidden" name="businessId" value={b.id} />
+                  <button className="flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-sm font-medium text-gray-700 hover:border-brand/40">
+                    <Eye className="h-4 w-4" /> Open book
+                  </button>
+                </form>
               </div>
-              <form action={switchBusiness}>
+              <form action={setBusinessPassword} className="mt-2 flex gap-2">
                 <input type="hidden" name="businessId" value={b.id} />
-                <button className="flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-sm font-medium text-gray-700 hover:border-brand/40">
-                  <Eye className="h-4 w-4" /> Open book
-                </button>
+                <input name="password" placeholder={b.hasPassword ? "Reset dashboard password" : "Set a dashboard password (6+ chars)"} className="min-h-[40px] flex-1 rounded-lg border border-gray-200 px-2 text-sm focus:border-brand focus:outline-none" />
+                <button className="min-h-[40px] shrink-0 rounded-lg bg-brand/10 px-3 text-sm font-medium text-brand-dark hover:bg-brand/20">Save</button>
               </form>
             </div>
           ))}

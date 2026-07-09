@@ -343,14 +343,16 @@ function parseClause(text: string, _ctx: ParseContext): Record<string, any> | nu
     return { intent: "set_reminder", confidence: 0.6, reminder_text: body || t, due_at: t };
   }
 
-  // Payment (incl. owes / unpaid, "gave me", "got X from Y")
-  const isPayment = /\b(collected|got paid|paid|payment|received|venmo(ed|'d)?|zelled?|owe|owes|unpaid|overdue|gave me|cobr[eé]|recib[ií]|me pag|pag[oó]|deben?|atrasad)\b/i.test(lower)
+  // Payment (incl. owes / unpaid, "gave me", "got X from Y"). ASCII terms use \b;
+  // accented ES terms (pagó, cobré, recibí) can't (ó/é aren't word chars).
+  const isPayment = /\b(collected|got paid|paid|payment|received|venmo(ed|'d)?|zelled?|owe|owes|unpaid|overdue|gave me)\b/i.test(lower)
+    || /(cobr[eé]|recib[ií]|me pag|pag(?:[oó]|aron|an|amos)|deben|atrasad)/i.test(lower)
     || (/\bgot\b/i.test(lower) && /\bfrom\b/i.test(lower) && /\d/.test(lower));
   if (isPayment) {
     const fromM = t.match(/\b(?:from|de|cobr[eé] a)\s+(?:los |las |el |la )?([a-zà-ÿ][a-zà-ÿ .'’-]+)/i);
     const owesM = t.match(/^([a-zà-ÿ][a-zà-ÿ .'’-]+?)\s+(?:owes?|still owes|deben?|no ha pagado|hasn'?t paid|gave me)/i);
-    // Leading-name form: "the smiths paid 200", "bob venmoed 300", "bob gave me 200"
-    const leadM = t.match(/^(?:the |los |las |el |la )?([a-zà-ÿ][a-zà-ÿ .'’-]+?)\s+(?:paid|pag[oó]|venmo(?:ed|'d)?|zelled|gave)\b/i);
+    // Leading-name form: "the smiths paid 200", "bob venmoed 300", "García pagó 150", "los smith pagaron 200"
+    const leadM = t.match(/^(?:the |los |las |el |la )?([a-zà-ÿ][a-zà-ÿ .'’-]+?)\s+(?:paid|pag(?:[oó]|aron|an|amos)|venmo(?:ed|'d)?|zelled|gave)(?=\s|\d|$)/i);
     const name = fromM?.[1] ?? owesM?.[1] ?? (leadM && !/^(got|collected|received|me|i)$/i.test(leadM[1].trim()) ? (t.match(/^the /i) ? `the ${leadM[1]}` : leadM[1]) : undefined);
     return { intent: "log_payment", confidence: 0.6, amount: t, client_name: cleanName(name), paid_on: t, payment_status: t, payment_method: t };
   }

@@ -15,11 +15,13 @@ export default function SignupPage() {
       <main className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center px-6 text-center">
         <div className="rounded-2xl border border-gray-100 bg-white p-8 shadow-sm">
           <div className="mb-3 text-4xl">🌱</div>
-          <h1 className="mb-2 text-2xl font-bold">You&apos;re set!</h1>
+          <h1 className="mb-2 text-2xl font-bold">One last step</h1>
           <p className="text-gray-600">
-            We&apos;ll text you from FieldText to get started — usually within the hour. Reply{" "}
-            <span className="font-semibold">STOP</span> anytime to opt out.
+            Text <span className="font-semibold">START</span> to{" "}
+            <a href="sms:+19714625343" className="font-semibold text-brand underline">(971) 462-5343</a>{" "}
+            from your phone to activate. That confirms it&apos;s really you, and your black book goes live instantly.
           </p>
+          <p className="mt-3 text-xs text-gray-400">Reply STOP anytime to opt out · HELP for help.</p>
         </div>
       </main>
     );
@@ -40,14 +42,22 @@ export default function SignupPage() {
           <Field label="Your name" name="name" type="text" required />
           <Field label="Business name" name="business" type="text" required />
           <Field label="Mobile number" name="phone" type="tel" required placeholder="(555) 123-4567" />
+          <div>
+            <label className="mb-1 block text-sm font-medium" htmlFor="language">Language</label>
+            <select id="language" name="language" defaultValue="en" className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand">
+              <option value="en">English</option>
+              <option value="es">Español</option>
+            </select>
+          </div>
 
           <label className="flex items-start gap-2 text-sm text-gray-600">
             <input name="consent" type="checkbox" required className="mt-1 h-4 w-4 rounded border-gray-300 text-brand focus:ring-brand" />
             <span>
-              I agree to receive recurring text messages from <span className="font-medium">FieldText</span> — quote and job
-              reminders, follow-up nudges, confirmations, and account notifications — at the mobile number I provided.
-              Message frequency varies. Message &amp; data rates may apply. Reply <span className="font-semibold">STOP</span> to
-              opt out and <span className="font-semibold">HELP</span> for help.
+              I agree to receive recurring SMS text messages from <span className="font-medium">FieldText</span> at the mobile
+              number I provided, to log and manage my landscaping business — confirmations, quote/job reminders, follow-up
+              nudges, and account notifications. Message frequency varies. Message &amp; data rates may apply. Reply{" "}
+              <span className="font-semibold">STOP</span> to opt out and <span className="font-semibold">HELP</span> for help.
+              Consent is not a condition of any purchase.
             </span>
           </label>
 

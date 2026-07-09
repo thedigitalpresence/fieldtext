@@ -254,6 +254,16 @@ export async function resolvePending(
     if (!clientId) return null;
     const missing = pending.missing ?? [];
 
+    // An UNAMBIGUOUS command mid-intake ("García pagó 150", "remind me friday")
+    // is not an answer to the completeness question — let it parse. Kept narrow
+    // so a real answer ("limpieza", a phone, an address) is never mistaken for one.
+    const looksLikeCommand =
+      /\b(paid|collected|owes?|venmo(?:ed|'d)?|zelled|remind me|invoice|receipt|spent|rained out)\b/i.test(a)
+      // Accented words can't use a trailing \b (ó/é aren't word chars).
+      || /(pag[oó]|cobr[eé]|deben|recu[eé]rdame|factura|recibo|llovi[oó]|gast[eé])/i.test(a)
+      || /^\s*(quoted|quoting|coti[a-zà-ÿ]*|new job|new client)\b/i.test(a);
+    if (looksLikeCommand) return null;
+
     // Final optional step: "anything to note?"
     if (missing.length === 1 && missing[0] === "notes") {
       const all0 = await listClients(business.id);
@@ -281,16 +291,13 @@ export async function resolvePending(
     }
     rest = rest.replace(/^[,;·-]+|[,;·-]+$/g, "").trim();
     if (rest) {
+      // Leftover with a digit → address; otherwise → the service.
       if (missing.includes("address") && /\d/.test(rest)) {
         patch.address = normalizeAddress(rest);
-      } else if (missing.includes("name") && !/\d/.test(rest) && rest.split(/\s+/).length <= 4) {
-        patch.name = normalizeName(rest);
-      } else if (missing.includes("address") && !missing.includes("service")) {
-        patch.address = normalizeAddress(rest); // street without a number still counts
       } else if (missing.includes("service")) {
         patch.service_description = rest.toLowerCase();
       } else if (missing.includes("address")) {
-        patch.address = normalizeAddress(rest);
+        patch.address = normalizeAddress(rest); // street name without a number
       }
     }
     if (!Object.keys(patch).length) return null; // unrelated text — parse normally
@@ -303,11 +310,9 @@ export async function resolvePending(
     const stillMissing = missing.filter((m) =>
       m === "phone" ? !client.phone
       : m === "address" ? !client.address
-      : m === "service" ? !client.service_description
-      : client.name.trim().split(/\s+/).length < 2
+      : /* service */ !client.service_description
     );
     const savedBits = [
-      patch.name ? client.name : null,
       patch.address ? client.address : null,
       patch.phone ? `📞 ${client.phone}` : null,
       patch.service_description ? client.service_description : null,
@@ -436,8 +441,9 @@ async function logQuote(business: Business, p: ParsedAction, ctx: ParseContext, 
 function finishIntake(client: Client, baseAction: ParsedAction, session: ActionSession, lang: Lang): string {
   const confirmation = t.quoteLogged(clientSummary(client, lang), lang);
   if (!baseAction.client_is_new) return confirmation;
+  // Chase the useful profile fields. (Name is NOT chased — "García" / "The Smiths"
+  // are perfectly valid client names.)
   const missing: string[] = [];
-  if (client.name.trim().split(/\s+/).length < 2) missing.push("name");
   if (!client.address) missing.push("address");
   if (!client.phone) missing.push("phone");
   if (!client.service_description) missing.push("service");

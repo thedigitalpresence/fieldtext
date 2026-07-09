@@ -48,6 +48,18 @@ export async function logout() {
   redirect("/dashboard/login");
 }
 
+/** Admin only: set/reset a business's dashboard password (grant dashboard access). */
+export async function setBusinessPassword(formData: FormData) {
+  const session = parseSession(await verifySession(cookies().get(AUTH_COOKIE)?.value));
+  if (session?.kind !== "admin") return;
+  const businessId = String(formData.get("businessId") ?? "");
+  const password = String(formData.get("password") ?? "").trim();
+  if (businessId && password.length >= 6) {
+    await db().from("businesses").update({ dashboard_password: password }).eq("id", businessId);
+  }
+  revalidatePath("/dashboard/admin");
+}
+
 /** Admin only: pick which business's book to view. */
 export async function switchBusiness(formData: FormData) {
   const session = parseSession(await verifySession(cookies().get(AUTH_COOKIE)?.value));

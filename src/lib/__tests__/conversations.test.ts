@@ -200,13 +200,13 @@ test("G2: complete new client asks for nothing extra", async () => {
   ]);
 });
 
-test("G2: single-word name gets chased for a full name", async () => {
-  await convo("G2 name-chase", [], [
-    { send: "quoted brandon for $100/mo mowing", expect: [/full name/i] },
-    { send: "brandon culpepper", expect: [/Brandon Culpepper/] },
+test("G2: single-word client names are fine (never chased)", async () => {
+  await convo("G2 single-name", [], [
+    // Brandon has a name, service, and price — only address + phone are chased.
+    { send: "quoted brandon at 5 oak st for $100/mo mowing", expect: [/phone/i], reject: [/full name/i] },
   ]);
-  const row = await getClient("Culpepper");
-  assert.ok(row, "full name saved");
+  const row = await getClient("Brandon");
+  assert.ok(row, "single-name client saved");
 });
 
 // ── G3: pending-flow robustness ───────────────────────────────────────────────
