@@ -55,6 +55,7 @@ interface Props {
     reminders: { id: string; clientId: string | null; text: string; who: string | null; overdue: boolean }[];
   };
   photos: { id: string; clientId: string | null; url: string; caption: string | null }[];
+  outstanding: { clientId: string | null; name: string; amountStr: string; dueStr: string }[];
   clients: ClientView[];
   upcoming: Upcoming[];
   activity: Activity[];
@@ -413,6 +414,31 @@ export default function DashboardClient(props: Props) {
           })}
         </div>
       </section>
+
+      {/* Money owed — reads the same ledger as the "who owes me?" text */}
+      {props.outstanding.length > 0 && (
+        <section>
+          <h2 className="mb-3 flex items-center gap-2 text-base font-bold text-gray-900">
+            <DollarSign className="h-4 w-4 text-red-500" />{L.moneyOwed}
+          </h2>
+          <div className="divide-y divide-gray-50 rounded-2xl border border-red-100 bg-white shadow-sm">
+            {props.outstanding.map((o, i) => (
+              <button
+                key={`${o.clientId ?? "x"}-${i}`}
+                onClick={() => o.clientId && setSelectedId(o.clientId)}
+                disabled={!o.clientId}
+                className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left enabled:hover:bg-red-50/40"
+              >
+                <span className="min-w-0">
+                  <span className="block truncate font-semibold text-gray-900">{o.name}</span>
+                  <span className="block text-xs text-gray-500">{L.owedSince} {o.dueStr}</span>
+                </span>
+                <span className="shrink-0 font-bold tabular-nums text-red-600">{o.amountStr}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Upcoming reminders */}
       <section>

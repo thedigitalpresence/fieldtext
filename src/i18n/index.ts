@@ -121,6 +121,8 @@ const en = {
   dragHint: "Tip: drag a card between columns",
   dropActive: "Drop to mark Active ✓",
   dropQuoted: "Drop to move to Quoted",
+  moneyOwed: "Money owed",
+  owedSince: "since",
 };
 
 const es: Dict = {
@@ -228,6 +230,8 @@ const es: Dict = {
   dragHint: "Tip: arrastra una tarjeta entre columnas",
   dropActive: "Suelta para marcar Activo ✓",
   dropQuoted: "Suelta para marcar Cotizado",
+  moneyOwed: "Dinero pendiente",
+  owedSince: "desde",
 };
 
 const DICTS: Record<Lang, Dict> = { en, es };

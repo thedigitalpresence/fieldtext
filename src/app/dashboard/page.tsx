@@ -2,7 +2,7 @@ import { db, getBusiness, getPrimaryPhone } from "@/lib/supabase";
 import { dict } from "@/i18n";
 import { businessLang, money, periodLabel } from "@/lib/templates";
 import { monthlyEquivalent } from "@/lib/intents";
-import { totalOutstanding } from "@/lib/charges";
+import { totalOutstanding, openBalances } from "@/lib/charges";
 import { listPhotos } from "@/lib/attachments";
 import DashboardClient from "./DashboardClient";
 import type { Client, Job, Payment, Reminder, Message, Lang } from "@/lib/types";
@@ -185,6 +185,18 @@ export default async function DashboardPage({ searchParams }: { searchParams?: {
     return [] as Awaited<ReturnType<typeof listPhotos>>;
   });
 
+  // Money owed — the SAME ledger the "who owes me?" text reads, so they never disagree.
+  const balances = await openBalances(bid);
+  const outstandingList = balances.map((b) => {
+    const c = b.client_id ? clients.find((x) => x.id === b.client_id) : null;
+    return {
+      clientId: c ? c.id : null, // only linkable if the client still exists
+      name: c ? c.name : (lang === "es" ? "Sin asignar" : "Unassigned"),
+      amountStr: money(Math.round(b.balance)),
+      dueStr: fmtShort(b.oldest_due, lang),
+    };
+  });
+
   const jobViews = jobs.map((j) => ({ id: j.id, clientId: j.client_id, description: j.description, dateStr: fmtShort(j.performed_on, lang), who: j.client_id ? nameOf(j.client_id) : null }));
   const payViews = payments.map((p) => ({ id: p.id, clientId: p.client_id, amountStr: money(p.amount), dateStr: fmtShort(p.paid_on ?? p.created_at, lang), who: p.client_id ? nameOf(p.client_id) : null, status: p.status ?? "paid" }));
   const reminderViews = reminders.map((r) => ({ id: r.id, clientId: r.client_id, text: r.text, dateStr: fmtShort(r.due_at, lang), kind: r.kind }));
@@ -218,6 +230,7 @@ export default async function DashboardPage({ searchParams }: { searchParams?: {
     pausedUntil: d.pausedUntil, pausedGroup: d.pausedGroup, confirmDecline: d.confirmDecline,
     photos: d.photos,
     dragHint: d.dragHint, dropActive: d.dropActive, dropQuoted: d.dropQuoted,
+    moneyOwed: d.moneyOwed, owedSince: d.owedSince,
     importedBanner: importedCount > 0 ? d.importedBanner.replace("{n}", String(importedCount)) : "",
   };
 
@@ -238,6 +251,7 @@ export default async function DashboardPage({ searchParams }: { searchParams?: {
       }}
       today={todayStrip}
       photos={photos}
+      outstanding={outstandingList}
       clients={clientViews}
       upcoming={upcoming}
       activity={activity}
