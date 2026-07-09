@@ -177,7 +177,7 @@ export async function parseMessage(text: string, ctx: ParseContext): Promise<Par
 }
 
 /** Compose a short SMS answer to a question, grounded in the provided data snapshot. */
-export async function answerQuery(question: string, dataSnapshot: string, ctx: ParseContext): Promise<QueryResult> {
+export async function answerQuery(question: string, dataSnapshot: string, ctx: ParseContext, recentConversation?: string): Promise<QueryResult> {
   if (config.llmDryRun()) return { text: heuristicAnswer(dataSnapshot), usage: null };
 
   const model = config.anthropic.model();
@@ -186,9 +186,17 @@ export async function answerQuery(question: string, dataSnapshot: string, ctx: P
     model,
     max_tokens: 400,
     system: [
-      `You are an SMS assistant for ${ctx.ownerName} at ${ctx.businessName}. Answer the question using ONLY the data below.`,
-      `Reply in ${langName}. Keep it short and natural — it's a text message. No long paragraphs, no markdown.`,
-      `If the data doesn't contain the answer, say so briefly.`,
+      `You are an SMS assistant for ${ctx.ownerName} at ${ctx.businessName}. Answer using ONLY the data below.`,
+      `Reply in ${langName}.`,
+      ``,
+      `FORMAT RULES (it's a text message):`,
+      `- Answer ONLY what was asked. Don't volunteer unrelated data (if they ask for notes, give notes — not quotes, balances, and history).`,
+      `- Short lines, one fact per line, "•" bullets when listing. No paragraphs, no markdown.`,
+      `- Lead with the direct answer. If the data doesn't contain it, say so in one line (e.g. "No notes saved for Elena yet — text 'note for Elena: ...' to add one.").`,
+      `- Money like $1,000 · dates like "Fri Jul 10".`,
+      ``,
+      `The RECENT CONVERSATION below is context — a terse follow-up ("images?", "and her address?", "what about bob") refers to the person/topic just discussed.`,
+      ...(recentConversation ? [``, `RECENT CONVERSATION (oldest first):`, recentConversation] : []),
       ``,
       `DATA:`,
       dataSnapshot,

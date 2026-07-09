@@ -414,6 +414,24 @@ test("G6: 'Add to <client>' captions attach directly (instruction words ignored)
   }
 });
 
+test("G6: snapshot knows notes and photos (what queries answer from)", async () => {
+  SCENARIOS++;
+  await reset(FULL_BOOK);
+  await say("note for dee garcia: gate sticks, big dog");
+  SID++;
+  await handleInbound({
+    from: "+15550001111", to: "+19995550000", body: "dee garcia",
+    messageSid: `SMsnap${SID}`, numMedia: 1,
+    media: [{ url: "https://api.twilio.com/fake/Media/ME789", contentType: "image/jpeg" }],
+  });
+  const { buildSnapshot } = await import("../intents");
+  const { data } = await db().from("businesses").select("*");
+  const snapshot = await buildSnapshot((data as any[])[0]);
+  assert.match(snapshot, /gate sticks/, "notes in snapshot");
+  assert.match(snapshot, /SITE PHOTOS/, "photos section in snapshot");
+  assert.match(snapshot, /Dee Garcia: 1 photo/, "photo count per client");
+});
+
 // ── G5: full command regression across book states ────────────────────────────
 test("G5: every command family works against every book state", async () => {
   const commands: { send: string; expect: RegExp }[] = [

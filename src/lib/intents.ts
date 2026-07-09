@@ -776,7 +776,15 @@ async function requestInvoice(business: Business, p: ParsedAction, session: Acti
 
 async function runQuery(business: Business, p: ParsedAction, ctx: ParseContext): Promise<string> {
   const snapshot = await buildSnapshot(business);
-  const { text, usage } = await answerQuery(p.query_text || "status", snapshot, ctx);
+  // Recent exchange as context so terse follow-ups ("images?") aren't amnesia.
+  const { data: msgRows } = await db()
+    .from("messages").select("*").eq("business_id", business.id)
+    .order("created_at", { ascending: false }).limit(8);
+  const transcript = ((msgRows ?? []) as { direction: string; body: string }[])
+    .reverse()
+    .map((m) => `${m.direction === "inbound" ? "OWNER" : "YOU"}: ${m.body.slice(0, 160)}`)
+    .join("\n");
+  const { text, usage } = await answerQuery(p.query_text || "status", snapshot, ctx, transcript);
   await logLlm(business, "llm_query", usage);
   return text;
 }
@@ -840,6 +848,15 @@ export async function buildSnapshot(business: Business): Promise<string> {
   for (const r of payments) lines.push(`- ${money(r.amount)} from ${nameOf(r.client_id)} on ${r.paid_on ?? r.created_at?.slice(0, 10)}${r.method ? ` (${r.method})` : ""}`);
   lines.push(`RECENT JOBS (newest first):`);
   for (const j of (jobRows ?? []) as Job[]) lines.push(`- ${j.description} for ${nameOf(j.client_id)} on ${j.performed_on ?? j.scheduled_on}${j.status === "scheduled" ? " (scheduled)" : ""}`);
+
+  // Site photos: counts per client — viewable on the dashboard, not sendable by SMS.
+  const { data: attRows } = await db().from("attachments").select("*").eq("business_id", business.id);
+  const photoCounts = new Map<string | null, number>();
+  for (const a of (attRows ?? []) as { client_id: string | null }[]) photoCounts.set(a.client_id, (photoCounts.get(a.client_id) ?? 0) + 1);
+  if (photoCounts.size) {
+    lines.push(`SITE PHOTOS (texted in; the owner views them on the client's card at fieldtext.vercel.app/dashboard — you cannot send them back by SMS):`);
+    for (const [cid, n] of photoCounts) lines.push(`- ${nameOf(cid)}: ${n} photo(s)`);
+  }
   return lines.join("\n");
 }
 
