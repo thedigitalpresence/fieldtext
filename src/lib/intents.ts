@@ -1,7 +1,7 @@
 import { db } from "./supabase";
 import { matchClients, matchClientsScored, createClient, updateClient, listClients, findClientInPhrase, STRONG_MATCH } from "./clients";
 import { createReminder, formatWhen, scheduleQuoteReminders, cancelQuoteReminders } from "./reminders";
-import { answerQuery, ParseContext } from "./anthropic";
+import { answerQuery, heuristicParse, ParseContext } from "./anthropic";
 import { logLlm } from "./billing";
 import { money, periodLabel, clientSummary, businessLang, t } from "./templates";
 import {
@@ -243,6 +243,24 @@ export async function resolvePending(
     const clientId = pending.action.client_id;
     if (!clientId) return null;
     const missing = pending.missing ?? [];
+
+    // Final optional step: "anything to note?"
+    if (missing.length === 1 && missing[0] === "notes") {
+      const all0 = await listClients(business.id);
+      const target = all0.find((c) => c.id === clientId);
+      if (!target) return null;
+      if (/^\s*(skip|no|none|nope|nah|nada|omitir|n\/a)\s*[.!]?\s*$/i.test(a)) {
+        return t.allSet(target.name, lang);
+      }
+      // If the reply is clearly a NEW command ("bob paid 300"), don't eat it as a note.
+      const probe = heuristicParse(a, ctx).actions[0];
+      if (probe && probe.intent !== "help" && probe.intent !== "update_client_info" && probe.confidence >= 0.55) {
+        return null; // normal parse takes over
+      }
+      const notes = target.notes ? `${target.notes}\n${a.trim()}` : a.trim();
+      await updateClient(clientId, { notes });
+      return t.noteSaved(target.name, lang);
+    }
     const patch: Partial<Client> = {};
     let rest = a;
 
@@ -287,6 +305,11 @@ export async function resolvePending(
     if (stillMissing.length) {
       session.pending = { kind: "complete_client", action: pending.action, missing: stillMissing, expiresAt: pendingExpiry() };
       return `${t.infoSaved(client.name, savedBits, lang)} ${t.needInfo(client.name, stillMissing, lang)}`;
+    }
+    // Required profile complete — close the intake with the optional notes step.
+    if (!client.notes) {
+      session.pending = { kind: "complete_client", action: pending.action, missing: ["notes"], expiresAt: pendingExpiry() };
+      return `${t.infoSaved(client.name, savedBits, lang)} ${t.anyNotes(client.name, lang)}`;
     }
     return t.infoSaved(client.name, savedBits, lang);
   }
@@ -363,6 +386,8 @@ async function logQuote(business: Business, p: ParsedAction, ctx: ParseContext, 
         amount: p.amount ?? client.amount,
         billing_period: p.billing_period ?? client.billing_period,
         service_description: p.service_description ?? client.service_description,
+        // Implicit notes ("...big dog in back, gate code 1187") ride along.
+        notes: p.note_text ? (client.notes ? `${client.notes}\n${p.note_text}` : p.note_text) : client.notes,
         last_nudged_at: null,
         ...sched,
       })) ?? client;
@@ -374,6 +399,7 @@ async function logQuote(business: Business, p: ParsedAction, ctx: ParseContext, 
       amount: p.amount,
       billing_period: p.billing_period,
       service_description: p.service_description,
+      notes: p.note_text ?? null,
       status: targetStatus,
       ...sched,
     });
@@ -390,7 +416,8 @@ async function logQuote(business: Business, p: ParsedAction, ctx: ParseContext, 
   }
 
   // Mandatory profile for a NEW client: full name, address, phone, service.
-  // Save what we have, then chase what's missing in one question.
+  // Save what we have, then chase what's missing in one question — and finish
+  // the intake with an optional "anything to note?" step.
   const confirmation = t.quoteLogged(clientSummary(client, lang), lang);
   if (isNew) {
     const missing: string[] = [];
@@ -401,6 +428,10 @@ async function logQuote(business: Business, p: ParsedAction, ctx: ParseContext, 
     if (missing.length) {
       session.pending = { kind: "complete_client", action: { ...p, client_id: client.id }, missing, expiresAt: pendingExpiry() };
       return `${confirmation}\n${t.needInfo(client.name, missing, lang)}`;
+    }
+    if (!client.notes) {
+      session.pending = { kind: "complete_client", action: { ...p, client_id: client.id }, missing: ["notes"], expiresAt: pendingExpiry() };
+      return `${confirmation}\n${t.anyNotes(client.name, lang)}`;
     }
   }
   return confirmation;

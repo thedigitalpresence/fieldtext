@@ -133,6 +133,7 @@ function systemPrompt(ctx: ParseContext): string {
     `- Use the client name EXACTLY as texted (e.g. "Eric Shackelford" stays Eric) — NEVER substitute a similar known client's name; the app confirms matches itself.`,
     `- One-off future work with a price ("mulch at the smiths next tuesday $450") = log_job with scheduled_on + amount.`,
     `- If they paid by a method ("bob venmoed 300", "paid cash") set payment_method.`,
+    `- IMPLICIT NOTES: descriptive details that aren't a field — gate codes, pets, access, terrain, preferences, warnings — go in note_text on the SAME action ("new job Bob Wilson mowing 150/week, big dog in back, gate code 1187" -> log_quote with note_text "big dog in back, gate code 1187"). Never drop these details.`,
     `- Requests you have no intent for (delete a record, edit an old job): set needs_clarification saying what to do instead — never force the nearest intent.`,
     `- A bare "no", "fix", "wrong", or "that's not right" (the owner rejecting the last confirmation) = correction intent with correction_text set to their message. NEVER answer these with needs_clarification.`,
     ``,

@@ -201,6 +201,12 @@ export const t = {
       : `Saved ${count > 1 ? `${count} photos` : "the photo"} to ${name} 📸 — it's on their card in your dashboard.`,
   noteSaved: (name: string, lang: Lang) =>
     lang === "es" ? `Nota guardada ✅ en la ficha de ${name}.` : `Note saved ✅ to ${name}.`,
+  anyNotes: (name: string, lang: Lang) =>
+    lang === "es"
+      ? `¿Algo que anotar sobre ${name}? (código del portón, perros, detalles) — o responde OMITIR.`
+      : `Anything to note about ${name}? (gate code, dogs, details) — or reply SKIP.`,
+  allSet: (name: string, lang: Lang) =>
+    lang === "es" ? `Listo ✅ ${name} está completo.` : `All set ✅ ${name} is fully saved.`,
   yesToAdd: (name: string, lang: Lang) =>
     lang === "es" ? `No encontré a "${name}". Responde SÍ para agregarlo, o manda el nombre correcto.` : `I don't know "${name}". Reply YES to add them, or send the right name.`,
   needInfo: (name: string, missing: string[], lang: Lang) => {
