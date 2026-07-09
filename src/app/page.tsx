@@ -8,9 +8,12 @@ const FOR_WHO = ["Landscapers", "Handymen", "House cleaners", "Painters", "Pool 
 const FEATURES = [
   "Text one number in plain language, English or Spanish",
   "Log quotes, jobs, and payments as they happen",
-  "Automatic follow-ups so nothing slips through",
-  "It knows who owes you, and makes invoices you can forward",
-  "A clean dashboard of your whole book, if you ever want it",
+  "Keep notes and photos on every client (gate codes, dogs, before and after pics)",
+  "Set reminders and get automatic follow-ups so nothing slips through",
+  "Ask it anything, like \"who owes me?\" or \"what's Monday look like?\"",
+  "It tracks who owes you and makes invoices you can forward to get paid",
+  "Bring your whole client list by paste, spreadsheet, or a photo of your notebook",
+  "A clean dashboard of your whole book, on your phone or computer",
 ];
 
 export default function Home() {
