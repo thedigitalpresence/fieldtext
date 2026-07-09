@@ -21,8 +21,10 @@ export async function submitSignup(_prev: SignupResult | null, formData: FormDat
   const business = String(formData.get("business") ?? "").trim().slice(0, 200);
   const phoneRaw = String(formData.get("phone") ?? "").trim().slice(0, 40);
   const language = String(formData.get("language")) === "es" ? "es" : "en";
+  const dashboardPassword = String(formData.get("password") ?? "").trim().slice(0, 100);
   const consented = formData.get("consent") === "on";
   if (!name || !business || !phoneRaw) return { ok: false, error: "Please fill in every field." };
+  if (!dashboardPassword || dashboardPassword.length < 6) return { ok: false, error: "Choose a password of at least 6 characters." };
   if (!consented) return { ok: false, error: "Please check the consent box so we can text you." };
 
   const phone = toE164(phoneRaw);
@@ -35,6 +37,7 @@ export async function submitSignup(_prev: SignupResult | null, formData: FormDat
 
   const { error } = await db().from("signups").insert({
     name, business_name: business, phone, language,
+    dashboard_password: dashboardPassword,
     status: "pending",
     consent_text: CONSENT_TEXT,
     consented_at: new Date().toISOString(),

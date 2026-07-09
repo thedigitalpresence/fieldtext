@@ -22,21 +22,28 @@ const COOKIE_OPTS = {
 
 export async function login(formData: FormData) {
   const password = String(formData.get("password") ?? "");
+  const phoneRaw = String(formData.get("phone") ?? "").trim();
   const next = String(formData.get("next") ?? "/dashboard");
   if (password) {
-    // Founder master key → admin session.
+    // Founder master key → admin session (phone not needed).
     if (password === config.dashboardPassword()) {
       cookies().set(AUTH_COOKIE, await signSession("admin"), COOKIE_OPTS);
       redirect(next.startsWith("/dashboard") ? next : "/dashboard");
     }
-    // Otherwise: a business's own dashboard password.
-    const { data } = await db().from("businesses").select("id,dashboard_password");
-    const match = ((data ?? []) as { id: string; dashboard_password: string | null }[])
-      .find((b) => b.dashboard_password && b.dashboard_password === password);
-    if (match) {
-      cookies().set(AUTH_COOKIE, await signSession(`b:${match.id}`), COOKIE_OPTS);
-      cookies().delete("ft_biz");
-      redirect(next.startsWith("/dashboard") ? next : "/dashboard");
+    // Operator: their PHONE NUMBER is the username, matched to their business.
+    const phone = toE164(phoneRaw);
+    if (phone) {
+      const { data: ap } = await db().from("authorized_phones").select("business_id").eq("phone", phone).maybeSingle();
+      const businessId = (ap as { business_id: string } | null)?.business_id;
+      if (businessId) {
+        const { data: biz } = await db().from("businesses").select("dashboard_password").eq("id", businessId).maybeSingle();
+        const stored = (biz as { dashboard_password: string | null } | null)?.dashboard_password;
+        if (stored && stored === password) {
+          cookies().set(AUTH_COOKIE, await signSession(`b:${businessId}`), COOKIE_OPTS);
+          cookies().delete("ft_biz");
+          redirect(next.startsWith("/dashboard") ? next : "/dashboard");
+        }
+      }
     }
   }
   redirect(`/dashboard/login?error=1&next=${encodeURIComponent(next)}`);

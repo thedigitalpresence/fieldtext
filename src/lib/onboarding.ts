@@ -10,7 +10,7 @@ import type { AuthorizedPhone, Lang } from "./types";
 
 interface Signup {
   id: string; name: string | null; business_name: string | null; phone: string | null;
-  language: string | null; status: string;
+  language: string | null; status: string; dashboard_password: string | null;
 }
 
 function slugify(s: string): string {
@@ -45,6 +45,7 @@ export async function activateSignup(phone: string): Promise<AuthorizedPhone | n
 
   const { data: biz, error } = await db().from("businesses").insert({
     slug, name: bizName, owner_name: name, timezone: "America/Los_Angeles",
+    dashboard_password: signup.dashboard_password ?? null, // lets them sign in on the web
     settings: { language: lang, quote_reminder_days: [2, 5, 7, 14], weekly_digest_enabled: true },
     created_at: now,
   }).select("*").single();

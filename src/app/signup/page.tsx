@@ -21,6 +21,11 @@ export default function SignupPage() {
             <a href="sms:+19714625343" className="font-semibold text-brand underline">(971) 462-5343</a>{" "}
             from your phone to activate. That confirms it&apos;s really you, and your black book goes live instantly.
           </p>
+          <p className="mt-4 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-600">
+            To use the web dashboard, sign in at{" "}
+            <a href="/dashboard" className="font-medium text-brand underline">fieldtextapp.com/dashboard</a>{" "}
+            with your <span className="font-medium">mobile number</span> and the password you just chose.
+          </p>
           <p className="mt-3 text-xs text-gray-400">Reply STOP anytime to opt out · HELP for help.</p>
         </div>
       </main>
@@ -49,6 +54,10 @@ export default function SignupPage() {
               <option value="en">English</option>
               <option value="es">Español</option>
             </select>
+          </div>
+          <div>
+            <Field label="Choose a password" name="password" type="password" required placeholder="at least 6 characters" />
+            <p className="mt-1 text-xs text-gray-400">You&apos;ll sign in to the web dashboard with your mobile number and this password.</p>
           </div>
 
           <label className="flex items-start gap-2 text-sm text-gray-600">

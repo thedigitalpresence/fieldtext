@@ -333,3 +333,6 @@ alter table signups add column if not exists status text not null default 'pendi
 alter table signups add column if not exists activated_at timestamptz;
 alter table signups add column if not exists business_id uuid references businesses(id) on delete set null;
 create index if not exists signups_phone_status_idx on signups (phone, status);
+-- 0010_signup_password.sql — let self-registering operators choose a dashboard
+-- password at signup. Carried onto their business when they activate by text.
+alter table signups add column if not exists dashboard_password text;
