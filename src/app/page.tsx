@@ -52,7 +52,7 @@ export default function Home() {
       {/* Marquee feature: the follow-up close loop */}
       <section className="w-full max-w-lg rounded-2xl border border-brand/25 bg-brand/5 p-6 text-left shadow-sm">
         <div className="flex items-center gap-2.5">
-          <IconBubble Icon={Repeat} className="h-10 w-10 shrink-0" />
+          <IconBubble Icon={Repeat} className="h-11 w-11 shrink-0" />
           <p className="text-xs font-bold uppercase tracking-widest text-brand-dark">Never let a quote go cold</p>
         </div>
         <h2 className="mt-3 text-2xl font-bold tracking-tight text-gray-900">It chases every quote for you.</h2>

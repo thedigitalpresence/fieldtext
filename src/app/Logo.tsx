@@ -1,25 +1,19 @@
 import type { LucideIcon } from "lucide-react";
 
-/** The logo's speech-bubble shape (bubble + tail) as a background fill. */
-function BubbleBg() {
-  return (
-    <svg viewBox="0 0 48 48" className="absolute inset-0 h-full w-full" aria-hidden="true">
-      <rect x="6" y="6" width="36" height="28" rx="8" fill="currentColor" />
-      <path d="M14 34 L14 41 L22 34 Z" fill="currentColor" />
-    </svg>
-  );
-}
-
 /**
- * A lucide icon sitting inside the logo's message bubble — so accent icons
- * (the follow-up loop, the demo Send button) match the mark. Bubble is
- * `text-brand`; nudge the icon up so it centers in the body, above the tail.
+ * A lucide icon inside the logo's message bubble, so accent icons (the follow-up
+ * loop, the demo Send button) match the mark. The bubble body fills the badge;
+ * the icon is absolutely centered on the body's center (44 viewBox, body center
+ * ≈ 39% down), so it lands dead-center above the tail. Bubble is `text-brand`.
  */
 export function IconBubble({ Icon, className, iconClassName }: { Icon: LucideIcon; className?: string; iconClassName?: string }) {
   return (
-    <span className={`relative inline-flex items-center justify-center text-brand ${className ?? ""}`}>
-      <BubbleBg />
-      <Icon className={`relative z-10 -mt-1 h-1/2 w-1/2 text-white ${iconClassName ?? ""}`} />
+    <span className={`relative inline-block text-brand ${className ?? ""}`}>
+      <svg viewBox="0 0 44 44" className="h-full w-full" aria-hidden="true">
+        <rect x="3" y="3" width="38" height="30" rx="9" fill="currentColor" />
+        <path d="M12 33 L12 41 L21 33 Z" fill="currentColor" />
+      </svg>
+      <Icon className={`absolute left-1/2 top-[39%] h-[46%] w-[46%] -translate-x-1/2 -translate-y-1/2 text-white ${iconClassName ?? ""}`} />
     </span>
   );
 }

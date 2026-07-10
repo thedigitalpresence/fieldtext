@@ -112,7 +112,7 @@ export default function DemoWidget() {
           className="min-h-[44px] flex-1 rounded-xl border border-gray-200 px-3 text-sm focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
         />
         <button aria-label="Send" className="group flex min-h-[44px] min-w-[44px] items-center justify-center transition hover:opacity-90">
-          <IconBubble Icon={Send} className="h-10 w-10" />
+          <IconBubble Icon={Send} className="h-11 w-11" />
         </button>
       </form>
     </div>
