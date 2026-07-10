@@ -9,11 +9,8 @@ const FEATURES = [
   "Text one number in plain language, English or Spanish",
   "Log quotes, jobs, and payments as they happen",
   "Keep notes and photos on every client (gate codes, dogs, before and after pics)",
-  "A built-in 4-touch follow-up on every quote, so none go cold",
+  "Tracks who owes you and makes invoices you can forward to get paid",
   "Ask it anything, like \"who owes me?\" or \"what's Monday look like?\"",
-  "It tracks who owes you and makes invoices you can forward to get paid",
-  "Bring your whole client list by paste, spreadsheet, or a photo of your notebook",
-  "A clean dashboard of your whole book, on your phone or computer",
 ];
 
 export default function Home() {
@@ -27,8 +24,7 @@ export default function Home() {
         </h1>
         <div className="flex max-w-lg flex-col gap-2 text-gray-600">
           <p className="text-xl font-semibold text-gray-900">Run your whole business with a text message.</p>
-          <p className="text-lg">If you work out of a truck, FieldText is your black book.</p>
-          <p className="text-lg">Text one number like you talk. It keeps everything straight and texts you back.</p>
+          <p className="text-lg">Text one number. It keeps everything straight and texts you back.</p>
         </div>
         <p className="max-w-md text-sm text-gray-500">
           Built for people in the field: {FOR_WHO.join(", ")}, and anyone who runs jobs on the go.
@@ -49,6 +45,9 @@ export default function Home() {
         </div>
       </div>
 
+      {/* Demo */}
+      <DemoWidget />
+
       {/* Marquee feature — the follow-up close loop */}
       <section className="w-full max-w-lg rounded-2xl border border-brand/25 bg-brand/5 p-6 text-left shadow-sm">
         <div className="flex items-center gap-2">
@@ -59,18 +58,13 @@ export default function Home() {
         <p className="mt-2 text-gray-600">
           Send a quote and FieldText remembers so you don&apos;t have to. Every one gets a
           <span className="font-semibold text-gray-900"> 4-touch follow-up</span> — it keeps checking in with you until
-          the job is won or the customer&apos;s out. You just reply <span className="font-semibold">IN</span>,{" "}
-          <span className="font-semibold">OUT</span>, or &quot;no reply yet&quot; and it handles the rest.
+          the job is won or the customer&apos;s out.
         </p>
-        <p className="mt-3 text-sm font-medium text-brand-dark">No sticky notes. No quotes slipping through. No money left on the table.</p>
       </section>
 
-      {/* Demo */}
-      <DemoWidget />
-
-      {/* What it does */}
+      {/* What else it does */}
       <section className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-        <p className="text-xs font-bold uppercase tracking-widest text-brand-dark">What it does</p>
+        <p className="text-xs font-bold uppercase tracking-widest text-brand-dark">What else it does</p>
         <ul className="mx-auto mt-4 max-w-sm space-y-2 text-left text-sm text-gray-600">
           {FEATURES.map((f) => (
             <li key={f} className="flex gap-2"><Check className="mt-0.5 h-4 w-4 shrink-0 text-brand" />{f}</li>
