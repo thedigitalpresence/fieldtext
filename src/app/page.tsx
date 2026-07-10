@@ -65,8 +65,7 @@ export default function Home() {
 
       {/* What else it does */}
       <section className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-        <p className="text-xs font-bold uppercase tracking-widest text-brand-dark">What else it does</p>
-        <p className="mt-1 text-sm font-medium text-gray-900">It all happens right in your texts:</p>
+        <p className="text-xs font-bold uppercase tracking-widest text-brand-dark">It all happens right in your texts</p>
         <ul className="mx-auto mt-4 max-w-sm space-y-2 text-left text-sm text-gray-600">
           {FEATURES.map((f) => (
             <li key={f} className="flex gap-2"><Check className="mt-0.5 h-4 w-4 shrink-0 text-brand" />{f}</li>
