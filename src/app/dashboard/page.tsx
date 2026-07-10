@@ -1,4 +1,5 @@
-import { db, currentBusiness, currentSession, listBusinesses, getPrimaryPhone } from "@/lib/supabase";
+import { db, currentBusiness, currentSession, listBusinesses } from "@/lib/supabase";
+import { config } from "@/lib/config";
 import { dict } from "@/i18n";
 import { businessLang, money, periodLabel } from "@/lib/templates";
 import { monthlyEquivalent } from "@/lib/intents";
@@ -74,7 +75,7 @@ export default async function DashboardPage({ searchParams }: { searchParams?: {
   const lang = businessLang(business);
   const d = dict(lang);
 
-  const [{ data: clientRows }, { data: jobRows }, { data: schedJobRows }, { data: payRows }, { data: remRows }, { data: msgRows }, primary] =
+  const [{ data: clientRows }, { data: jobRows }, { data: schedJobRows }, { data: payRows }, { data: remRows }, { data: msgRows }] =
     await Promise.all([
       db().from("clients").select("*").eq("business_id", bid).order("updated_at", { ascending: false }),
       db().from("jobs").select("*").eq("business_id", bid).order("performed_on", { ascending: false }).limit(30),
@@ -82,7 +83,6 @@ export default async function DashboardPage({ searchParams }: { searchParams?: {
       db().from("payments").select("*").eq("business_id", bid).order("created_at", { ascending: false }).limit(30),
       db().from("reminders").select("*").eq("business_id", bid).eq("status", "pending").order("due_at", { ascending: true }),
       db().from("messages").select("*").eq("business_id", bid).eq("direction", "inbound").order("created_at", { ascending: false }).limit(30),
-      getPrimaryPhone(bid),
     ]);
 
   const clients = (clientRows ?? []) as Client[];
@@ -322,7 +322,7 @@ export default async function DashboardPage({ searchParams }: { searchParams?: {
   return (
     <DashboardClient
       businessName={business.name}
-      subtitle={primary ? d.remindersTextYou(fmtPhone(primary.phone)) : ""}
+      subtitle={config.twilio.fromNumber() ? d.remindersTextYou(fmtPhone(config.twilio.fromNumber()!)) : ""}
       lang={lang}
       labels={labels}
       kpis={{

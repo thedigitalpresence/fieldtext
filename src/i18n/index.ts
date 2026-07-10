@@ -9,7 +9,7 @@ export type Dict = typeof en;
 
 const en = {
   signOut: "Sign out",
-  remindersTextYou: (phone: string) => `Reminders text you at ${phone}`,
+  remindersTextYou: (phone: string) => `Your FieldText number: ${phone} — text it to log anything`,
   // KPIs
   monthlyRecurring: "Monthly recurring",
   openQuotes: "Open quotes",
@@ -146,7 +146,7 @@ const en = {
 
 const es: Dict = {
   signOut: "Cerrar sesión",
-  remindersTextYou: (phone: string) => `Los recordatorios te llegan por mensaje al ${phone}`,
+  remindersTextYou: (phone: string) => `Tu número de FieldText: ${phone} — envíale un mensaje para registrar lo que sea`,
   monthlyRecurring: "Ingreso mensual",
   openQuotes: "Cotizaciones abiertas",
   potential: (v: string) => `${v}/mes potencial`,
