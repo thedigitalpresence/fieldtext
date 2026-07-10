@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Check, Repeat } from "lucide-react";
 import DemoWidget from "./DemoWidget";
-import { Logo } from "./Logo";
+import { Logo, IconBubble } from "./Logo";
 
 export const metadata = { title: "FieldText: Run your business by text" };
 
@@ -51,8 +51,8 @@ export default function Home() {
 
       {/* Marquee feature: the follow-up close loop */}
       <section className="w-full max-w-lg rounded-2xl border border-brand/25 bg-brand/5 p-6 text-left shadow-sm">
-        <div className="flex items-center gap-2">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand text-white"><Repeat className="h-5 w-5" /></span>
+        <div className="flex items-center gap-2.5">
+          <IconBubble Icon={Repeat} className="h-10 w-10 shrink-0" />
           <p className="text-xs font-bold uppercase tracking-widest text-brand-dark">Never let a quote go cold</p>
         </div>
         <h2 className="mt-3 text-2xl font-bold tracking-tight text-gray-900">It chases every quote for you.</h2>

@@ -1,3 +1,29 @@
+import type { LucideIcon } from "lucide-react";
+
+/** The logo's speech-bubble shape (bubble + tail) as a background fill. */
+function BubbleBg() {
+  return (
+    <svg viewBox="0 0 48 48" className="absolute inset-0 h-full w-full" aria-hidden="true">
+      <rect x="6" y="6" width="36" height="28" rx="8" fill="currentColor" />
+      <path d="M14 34 L14 41 L22 34 Z" fill="currentColor" />
+    </svg>
+  );
+}
+
+/**
+ * A lucide icon sitting inside the logo's message bubble — so accent icons
+ * (the follow-up loop, the demo Send button) match the mark. Bubble is
+ * `text-brand`; nudge the icon up so it centers in the body, above the tail.
+ */
+export function IconBubble({ Icon, className, iconClassName }: { Icon: LucideIcon; className?: string; iconClassName?: string }) {
+  return (
+    <span className={`relative inline-flex items-center justify-center text-brand ${className ?? ""}`}>
+      <BubbleBg />
+      <Icon className={`relative z-10 -mt-1 h-1/2 w-1/2 text-white ${iconClassName ?? ""}`} />
+    </span>
+  );
+}
+
 /**
  * FieldText mark: a message bubble (nods to "Text") holding an "FT" ligature —
  * the F and T share one top bar, so the top of the F meets the top of the T.
