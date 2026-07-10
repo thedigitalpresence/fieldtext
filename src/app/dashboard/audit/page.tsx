@@ -10,7 +10,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { currentSession } from "@/lib/supabase";
-import { ShieldCheck, AlertTriangle, Sparkles, CheckCircle2, Leaf, Compass, ClipboardCheck, Wrench } from "lucide-react";
+import { ShieldCheck, AlertTriangle, Sparkles, CheckCircle2, Compass, ClipboardCheck, Wrench } from "lucide-react";
+import { Logo } from "@/app/Logo";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "FieldText — Beta-Readiness Audit", robots: { index: false, follow: false } };
@@ -143,7 +144,7 @@ export default async function AuditPage() {
       {/* Header */}
       <header className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-3">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand text-white shadow-sm"><Leaf className="h-6 w-6" /></span>
+          <Logo className="h-11 w-11 shrink-0 text-brand drop-shadow-sm" />
           <div>
             <p className="text-xs font-bold uppercase tracking-widest text-brand-dark">Internal · not linked anywhere</p>
             <h1 className="text-2xl font-bold tracking-tight text-gray-900">FieldText — Beta-Readiness Audit</h1>

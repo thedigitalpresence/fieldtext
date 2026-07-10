@@ -7,7 +7,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { currentSession } from "@/lib/supabase";
-import { Compass, Rocket, MessageSquareText, TrendingUp, Smartphone, Zap, Ban, Leaf, ShieldCheck, CheckCircle2 } from "lucide-react";
+import { Compass, Rocket, MessageSquareText, TrendingUp, Smartphone, Zap, Ban, ShieldCheck, CheckCircle2 } from "lucide-react";
+import { Logo } from "@/app/Logo";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "FieldText — Roadmap Deep Dive", robots: { index: false, follow: false } };
@@ -137,7 +138,7 @@ export default async function RoadmapPage() {
       {/* Header */}
       <header className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-3">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand text-white shadow-sm"><Leaf className="h-6 w-6" /></span>
+          <Logo className="h-11 w-11 shrink-0 text-brand drop-shadow-sm" />
           <div>
             <p className="text-xs font-bold uppercase tracking-widest text-brand-dark">Internal · not linked anywhere</p>
             <h1 className="text-2xl font-bold tracking-tight text-gray-900">FieldText — Roadmap Deep Dive</h1>
@@ -223,7 +224,7 @@ export default async function RoadmapPage() {
       </Section>
 
       {/* Feature additions */}
-      <Section Icon={Leaf} title="Features — the operator's actual day" count={FEATURES.length}>
+      <Section Icon={MessageSquareText} title="Features — the operator's actual day" count={FEATURES.length}>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           {FEATURES.map((it) => <ItemCard key={it.name} it={it} />)}
         </div>

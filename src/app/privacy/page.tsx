@@ -12,7 +12,7 @@ export default function PrivacyPage() {
 
       <div className="prose mt-8 space-y-6 text-gray-700">
         <Section title="Who we are">
-          FieldText is a text-message-based CRM and reminder assistant for landscaping business owners,
+          FieldText is a text-message-based CRM and reminder assistant for field-service business owners,
           operated by Shack&apos;s Landing LLC. This policy explains what we collect and how we use it.
         </Section>
 

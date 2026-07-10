@@ -1,10 +1,12 @@
 "use client";
 
+import { Logo } from "@/app/Logo";
+
 // Branded error boundary with a retry — instead of Next's unstyled default.
 export default function DashboardError({ reset }: { error: Error & { digest?: string }; reset: () => void }) {
   return (
     <main className="mx-auto flex min-h-[60vh] max-w-md flex-col items-center justify-center gap-4 px-6 text-center">
-      <div className="text-4xl">🌱</div>
+      <Logo className="h-12 w-12 text-brand" />
       <h1 className="text-xl font-bold text-gray-900">Something went wrong loading your book</h1>
       <p className="text-sm text-gray-500">
         Your data is safe — this is usually a hiccup reaching the database. Try again, and if it keeps

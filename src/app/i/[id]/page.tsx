@@ -5,7 +5,7 @@
  */
 import { db } from "@/lib/supabase";
 import { money } from "@/lib/templates";
-import { Leaf } from "lucide-react";
+import { Logo } from "@/app/Logo";
 import type { InvoiceRecord, InvoicePayload } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -39,7 +39,7 @@ export default async function InvoicePage({ params }: { params: { id: string } }
         {/* Header */}
         <div className="flex items-center justify-between gap-3 border-b border-gray-100 bg-brand/5 px-5 py-4">
           <div className="flex items-center gap-2.5">
-            <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand text-white"><Leaf className="h-5 w-5" /></span>
+            <Logo className="h-9 w-9 text-brand" />
             <div>
               <p className="font-bold leading-tight text-gray-900">{p.business_name}</p>
               <p className="text-xs text-gray-500">{dateStr}</p>

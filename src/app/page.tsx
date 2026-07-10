@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { Leaf, Check, Repeat } from "lucide-react";
+import { Check, Repeat } from "lucide-react";
 import DemoWidget from "./DemoWidget";
+import { Logo } from "./Logo";
 
 export const metadata = { title: "FieldText: Run your business by text" };
 
@@ -18,7 +19,7 @@ export default function Home() {
     <main className="mx-auto flex min-h-screen max-w-3xl flex-col items-center gap-10 px-6 py-14 text-center">
       {/* Hero */}
       <div className="flex flex-col items-center gap-5">
-        <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand text-white shadow-sm"><Leaf className="h-6 w-6" /></span>
+        <Logo className="h-12 w-12 text-brand drop-shadow-sm" />
         <h1 className="text-4xl font-bold tracking-tight">
           Field<span className="text-brand">Text</span>
         </h1>

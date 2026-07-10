@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useFormState, useFormStatus } from "react-dom";
 import { submitSignup, type SignupResult } from "./actions";
+import { Logo } from "@/app/Logo";
 
 // Public consent / signup page. Used as opt-in proof for Twilio A2P
 // verification, and as the real front door for onboarding operators.
@@ -14,7 +15,7 @@ export default function SignupPage() {
     return (
       <main className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center px-6 text-center">
         <div className="rounded-2xl border border-gray-100 bg-white p-8 shadow-sm">
-          <div className="mb-3 text-4xl">🌱</div>
+          <Logo className="mx-auto mb-3 h-12 w-12 text-brand" />
           <h1 className="mb-2 text-2xl font-bold">One last step</h1>
           <p className="text-gray-600">
             Text this code to{" "}

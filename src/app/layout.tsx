@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: { default: "FieldText", template: "%s — FieldText" },
-  description: "Run your landscaping business by text message.",
+  description: "Run your business by text message.",
 };
 
 export const viewport: Viewport = {

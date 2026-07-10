@@ -6,10 +6,11 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   FileText, UserCheck, Briefcase, DollarSign, Bell, MessageCircle, Languages,
-  CalendarClock, Search, X, Check, Clock, Ban, Upload, Sun, Leaf, TrendingUp, AlertCircle,
+  CalendarClock, Search, X, Check, Clock, Ban, Upload, Sun, TrendingUp, AlertCircle,
   Download, Loader2, ChevronRight, ChevronLeft, Phone, PauseCircle, Pencil, Users,
   CalendarDays, MapPin,
 } from "lucide-react";
+import { Logo } from "@/app/Logo";
 import type { ClientStatus, Lang } from "@/lib/types";
 import {
   logout, setLanguage, markStatus, addNote, addReminderAction, logPayment, reminderAction,
@@ -209,9 +210,7 @@ export default function DashboardClient(props: Props) {
       {/* Header */}
       <header className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand text-white shadow-sm">
-            <Leaf className="h-5 w-5" />
-          </span>
+          <Logo className="h-10 w-10 shrink-0 text-brand drop-shadow-sm" />
           <div className="min-w-0">
             <h1 className="truncate text-2xl font-bold tracking-tight text-gray-900">{props.businessName}</h1>
             {props.subtitle && <p className="mt-0.5 text-sm text-gray-500">{props.subtitle}</p>}

@@ -11,7 +11,7 @@ export default function TermsPage() {
 
       <div className="mt-8 space-y-6 text-gray-700">
         <Section title="The service">
-          FieldText, operated by Shack&apos;s Landing LLC, lets a landscaping business owner log and manage
+          FieldText, operated by Shack&apos;s Landing LLC, lets a field-service business owner log and manage
           their business by text message — quotes, clients, jobs, payments, and reminders — and receive
           confirmations, reminders, and answers by SMS.
         </Section>
