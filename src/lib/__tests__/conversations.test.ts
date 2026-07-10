@@ -431,6 +431,15 @@ test("G8: an oddly formatted / international number still attaches", async () =>
   assert.ok(!/number|her/i.test(String(row!.service_description ?? "")), "filler didn't leak into service");
 });
 
+// ── G8b: dashboard link is answerable (not a menu dump, not a broken promise) ──
+test("G8b: asking for the dashboard link gives the actual URL", async () => {
+  await reset([]);
+  for (const msg of ["how do I access the dashboard", "send link to dashboard", "send the link"]) {
+    const reply = await say(msg);
+    assert.match(reply, /\/dashboard/i, `"${msg}" should surface the dashboard URL → "${reply}"`);
+  }
+});
+
 // ── G6: notes + photos ─────────────────────────────────────────────────────────
 test("G6: note-first prospect — note before any quote creates a prospect with the note", async () => {
   await convo("G6 note-new", [], [

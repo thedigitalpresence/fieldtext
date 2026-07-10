@@ -96,11 +96,15 @@ async function runAction(
       // Explicit help/menu → the menu.
       if (/^\s*(help|ayuda|menu|menú)\s*$/i.test(rt)) return t.helpHint(lang);
       // A real question or conversational ask ("how do I...", "can you track
-      // expenses?", "what should I do about Bob?") → answer it conversationally
-      // (the answerer has the book + recent chat, and can ask its own follow-up).
+      // expenses?", "what should I do about Bob?"), a request for the dashboard
+      // link/sign-in, or a terse follow-up ("send it", "send the link") →
+      // answer conversationally. The answerer has the book, the dashboard URL,
+      // and the recent chat, so it can resolve "send the link" from context.
       const looksConversational =
         /\?/.test(rt) ||
-        /\b(how|what|why|when|where|which|who|can you|could you|can i|do you|are you|is there|should i|what if|help me|c[oó]mo|qu[eé]|por qu[eé]|puedes|puedo|hay|cu[aá]l|qui[eé]n|deber[ií]a)\b/i.test(rt);
+        /\b(how|what|why|when|where|which|who|can you|could you|can i|do you|are you|is there|should i|what if|help me|c[oó]mo|qu[eé]|por qu[eé]|puedes|puedo|hay|cu[aá]l|qui[eé]n|deber[ií]a)\b/i.test(rt) ||
+        /\b(link|dashboard|log ?in|sign ?in|website|url|address to|the app)\b/i.test(rt) ||
+        /^\s*(send (it|the link|that)|yes send|go ahead|please do|s[ií]|mand[aá]lo|env[ií]a(lo|melo)?)\s*[.!]?\s*$/i.test(rt);
       if (looksConversational && /[a-zà-ÿ]{2,}/i.test(rt)) {
         return runQuery(business, { ...p, intent: "query", query_text: rt }, ctx);
       }
@@ -1009,6 +1013,8 @@ export async function buildSnapshot(business: Business): Promise<string> {
 
   const lines: string[] = [];
   lines.push(`TODAY: ${today}`);
+  // The real dashboard link, so "send the link" / "how do I sign in" get a direct answer.
+  lines.push(`DASHBOARD LINK: ${config.appUrl()}/dashboard — sign in with your mobile number + your dashboard password.`);
   const noteStr = (c: Client) => (c.notes ? `, notes: "${c.notes.replace(/\n/g, "; ").slice(0, 120)}"` : "");
   lines.push(`OPEN QUOTES & PROSPECTS (need follow-up): ${quoted.length}`);
   for (const c of quoted) lines.push(`- ${c.name}${c.address ? ` (${c.address})` : ""}: ${money(c.amount)}${periodLabel(c.billing_period, lang)}${c.service_description ? `, ${c.service_description}` : ""}${noteStr(c)}`);
