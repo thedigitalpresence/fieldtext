@@ -7,11 +7,11 @@ export const metadata = { title: "FieldText: Run your business by text" };
 
 const FOR_WHO = ["Landscapers", "Handymen", "House cleaners", "Painters", "Pool techs", "Pressure washers"];
 const FEATURES = [
-  "Text one number in plain language, English or Spanish",
-  "Log quotes, jobs, and payments as they happen",
-  "Keep notes and photos on every client (gate codes, dogs, before and after pics)",
-  "Tracks who owes you and makes invoices you can forward to get paid",
-  "Ask it anything, like \"who owes me?\" or \"what's Monday look like?\"",
+  "Text a quote, job, or payment as it happens — plain words, English or Spanish",
+  "Text a photo or note to any client (gate codes, dogs, before and after pics)",
+  "Text \"who owes me?\" and it tells you who owes what",
+  "Text \"invoice Bob\" and it makes one you can forward to get paid",
+  "Text a question anytime, like \"what's Monday look like?\"",
 ];
 
 export default function Home() {
@@ -23,9 +23,9 @@ export default function Home() {
         <h1 className="text-4xl font-bold tracking-tight">
           Field<span className="text-brand">Text</span>
         </h1>
-        <div className="flex max-w-lg flex-col gap-2 text-gray-600">
+        <div className="flex max-w-lg flex-col gap-2 text-gray-600 [text-wrap:balance]">
           <p className="text-xl font-semibold text-gray-900">Run your whole business with a text message.</p>
-          <p className="text-lg">Text one number. It keeps everything straight and texts you back.</p>
+          <p className="text-lg">Text one number. It keeps everything straight and texts&nbsp;you&nbsp;back.</p>
         </div>
         <p className="max-w-md text-sm text-gray-500">
           Built for people in the field: {FOR_WHO.join(", ")}, and anyone who runs jobs on the go.
@@ -66,6 +66,7 @@ export default function Home() {
       {/* What else it does */}
       <section className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
         <p className="text-xs font-bold uppercase tracking-widest text-brand-dark">What else it does</p>
+        <p className="mt-1 text-sm font-medium text-gray-900">It all happens right in your texts:</p>
         <ul className="mx-auto mt-4 max-w-sm space-y-2 text-left text-sm text-gray-600">
           {FEATURES.map((f) => (
             <li key={f} className="flex gap-2"><Check className="mt-0.5 h-4 w-4 shrink-0 text-brand" />{f}</li>

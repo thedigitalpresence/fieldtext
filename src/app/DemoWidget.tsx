@@ -11,30 +11,44 @@ type Msg = { from: "you" | "ft"; text: string };
 
 const SUGGESTIONS = [
   "quoted Jane at 5 Oak St for $200/mo mowing",
+  "they're in",
+  "spent 100 on mulch for Elena",
   "Bob paid 300",
-  "remind me to call Jane friday",
-  "rained out, push today to tomorrow",
   "who owes me?",
+  "what's Monday look like?",
 ];
 
 function fakeReply(input: string): string {
   const t = input.toLowerCase();
+  // Quote close-loop replies (the marquee feature) — check before generic "quote".
+  if (/\b(they'?re in|accepted|signed|won|closed the deal)\b/.test(t)) return "🎉 Jane's in! Moved them to active.";
+  if (/\b(they'?re out|passed|declined|went with|no reply|not yet|no word)\b/.test(t)) return "👍 Staying on Jane — I'll check back with you in 6h.";
   if (/quote|quoted|cotic/.test(t)) {
     const name = input.match(/quoted\s+([a-z]+(?:\s[a-z]+)?)/i)?.[1] ?? "Jane";
     const amt = input.match(/\$?\s?(\d[\d,]*)/)?.[1] ?? "200";
     const cap = name.replace(/\b\w/g, (c) => c.toUpperCase());
-    return `Got it ✅ ${cap} · $${amt}/mo · Quoted. I'll nudge you if they go quiet. Reply "fix" to correct.`;
+    return `Got it ✅ ${cap} · $${amt}/mo · mowing · Quoted. I'll chase the follow-up until it's won or out.`;
   }
-  if (/owes me|who owes|debe/.test(t)) return "Bob Smith owes $450 (oldest due Jun 24). Everyone else is settled ✅";
+  if (/owes me|who owes|debe/.test(t)) return "Bob owes $450 · Elena owes $120. Everyone else is settled ✅";
+  if (/spent|bought|gas|fuel|mulch|materials/.test(t)) {
+    const amt = input.match(/\$?\s?(\d[\d,]*)/)?.[1] ?? "100";
+    const forM = input.match(/for\s+([a-z]+)/i);
+    return forM
+      ? `Expense ✅ $${amt} — mulch · saved to ${forM[1].replace(/\b\w/, (c) => c.toUpperCase())}'s card.`
+      : `Expense ✅ $${amt} — materials.`;
+  }
   if (/paid|collected|venmo|pag/.test(t)) {
     const amt = input.match(/\$?\s?(\d[\d,]*)/)?.[1] ?? "300";
-    return `Recorded ✅ $${amt} from Bob on Jul 7. Bob is all settled ✅`;
+    return `Payment ✅ $${amt} from Bob — Bob's all settled ✅`;
   }
-  if (/remind/.test(t)) return `Reminder set ✅ I'll text you Fri, Jul 10, 9:00 AM: call Jane`;
-  if (/rain|push/.test(t)) return "Moved ✅ 3 stop(s) → Jul 8: The Smiths, Garcia, Jane.";
+  if (/remind/.test(t)) return "Reminder set ✅ I'll text you Fri 9:00 AM: call Jane";
+  if (/monday|tuesday|wednesday|thursday|friday|route|look like|schedule/.test(t)) {
+    return "☀️ Mon, mostly sunny 72°/54°\n• The Smiths — 12 Oak St\n• Garcia — 8 Elm St\n• Jane — 5 Oak St";
+  }
+  if (/rain|push/.test(t)) return "Moved ✅ 3 stops → tomorrow: The Smiths, Garcia, Jane.";
   if (/invoice/.test(t)) return "Invoice for Bob ($450): fieldtextapp.com/i/a1b2…\nForward it from your phone 👍";
-  if (/mowed|mow|cut|trim|clean/.test(t)) return "Logged ✅ mowing for The Smiths on Jul 7. Next visit Jul 14.";
-  return 'I can log quotes, jobs, payments, and reminders. Try "quoted Jane at 5 Oak St for $200/mo".';
+  if (/mowed|mow|cut|trim|clean/.test(t)) return "Logged ✅ mowing for The Smiths. Next visit in 7 days.";
+  return 'Text me like you talk — try "quoted Jane at 5 Oak St for $200/mo" or "who owes me?".';
 }
 
 export default function DemoWidget() {
