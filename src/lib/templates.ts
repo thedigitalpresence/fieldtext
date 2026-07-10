@@ -65,8 +65,8 @@ export const t = {
   // Distinct copy per outcome — a routine "job done" must never read like a delete.
   clientCompleted: (name: string, lang: Lang) =>
     lang === "es"
-      ? `Marqué a ${name} como completado ✅ (ya no está en tu lista activa). Si querías registrar una visita, responde "corrige".`
-      : `Marked ${name} completed ✅ (off your active list). If you meant a finished visit, reply "fix".`,
+      ? `Listo — quité a ${name} de tu lista activa ✅. ¿Prefieres pausarlo para más adelante? Responde "pausa ${name}". Si era una visita terminada, responde "corrige".`
+      : `Done — took ${name} off your active list ✅. Want to pause them for later instead? Reply "pause ${name}". If you meant a finished visit, reply "fix".`,
   clientLost: (name: string, lang: Lang) =>
     lang === "es" ? `Marqué a ${name} como perdido. Responde "corrige" para corregir.` : `Marked ${name} lost. Reply "fix" to correct.`,
 

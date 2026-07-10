@@ -114,7 +114,7 @@ function systemPrompt(ctx: ParseContext): string {
     `NORMALIZE to canonical values:`,
     `- amount: numeric only (\$1.2k -> 1200, "five hundred"/"quinientos" -> 500, "500/mo" -> 500).`,
     `- billing_period enum: one_time | weekly | biweekly | monthly. ("a month"/"al mes" -> monthly, "every other week"/"cada dos semanas" -> biweekly, "one off"/"una vez" -> one_time).`,
-    `- status enum: quoted | active | completed | lost. ("said yes"/"dijo que sí"/"are in"/"empieza" -> active; "declined"/"perdimos"/"lost the X job" -> lost).`,
+    `- status enum: quoted | active | completed | lost. ("said yes"/"dijo que sí"/"are in"/"empieza" -> active; "declined"/"perdimos"/"lost the X job" -> lost; "remove/drop/get rid of/fire/no longer a client/done with X for good"/"quita/elimina/ya no es cliente" -> completed — this DOES remove them, it is a supported action).`,
     `- client_name Title Case; address with standard abbreviations.`,
     `- recurring service schedule: "every other tuesday"/"weekly on mondays"/"cada dos semanas los martes" -> service_interval (weekly|biweekly|monthly) + service_day. This is the SERVICE cadence, separate from billing_period.`,
     `- payments: "collected/paid/cobré" -> log_payment payment_status=paid; "owes"/"hasn't paid"/"debe" -> payment_status=unpaid; "overdue/atrasado" -> overdue.`,
@@ -137,7 +137,7 @@ function systemPrompt(ctx: ParseContext): string {
     `- One-off future work with a price ("mulch at the smiths next tuesday $450") = log_job with scheduled_on + amount.`,
     `- If they paid by a method ("bob venmoed 300", "paid cash") set payment_method.`,
     `- IMPLICIT NOTES: descriptive details that aren't a field — gate codes, pets, access, terrain, preferences, warnings — go in note_text on the SAME action ("new job Bob Wilson mowing 150/week, big dog in back, gate code 1187" -> log_quote with note_text "big dog in back, gate code 1187"). Never drop these details.`,
-    `- Requests you have no intent for (delete a record, edit an old job): set needs_clarification saying what to do instead — never force the nearest intent.`,
+    `- Removing/dropping a CLIENT is supported: use update_status completed (see status enum). Only truly unsupported requests (deleting one old job/payment row, editing a past record) get needs_clarification saying what to do instead — never force the nearest intent for those.`,
     `- A bare "no", "fix", "wrong", or "that's not right" (the owner rejecting the last confirmation) = correction intent with correction_text set to their message. NEVER answer these with needs_clarification.`,
     ``,
     `needs_clarification rules — the app has its own follow-up system, so stay out of its lane:`,
@@ -392,6 +392,22 @@ function parseClause(text: string, _ctx: ParseContext): Record<string, any> | nu
   // Status change (plain language) — must not collide with job verbs.
   // Prefix match so inflections count: "mowing", "trimmed", "aerated", "edging".
   const looksJob = /\b(mow|clean|trim|cut|aerat|fertiliz|edg|blew|blow|plant|mulch|weed|prun|hedg|rake|dethatch|scalp|cort|pod|limpi|hice)\w*/i.test(lower) || /\bdid\b/i.test(lower);
+
+  // Explicit removal ("remove bob", "drop the smiths", "get rid of jones",
+  // "fire james", "done with the smiths for good"). Ends the relationship =
+  // update_status completed. (Guarded by !looksJob so "drop off the mulch" stays a job.)
+  if (!looksJob) {
+    const removeM =
+      t.match(/^(?:please\s+)?(?:remove|delete|drop|get\s+rid\s+of|fire|dump|elimina(?:r)?|quita(?:r)?|saca(?:r)?|borra(?:r)?)\s+(?:the\s+|los\s+|las\s+|el\s+|la\s+|a\s+)?([a-zà-ÿ][a-zà-ÿ .'’-]+)/i)
+      || t.match(/\bdone with\s+(?:the\s+|los\s+|las\s+|el\s+|la\s+|a\s+)?([a-zà-ÿ][a-zà-ÿ .'’-]+?)\s+for good\b/i)
+      || t.match(/\b([a-zà-ÿ][a-zà-ÿ .'’-]+?)\s+(?:is\s+)?no longer (?:a )?(?:client|customer)\b/i);
+    if (removeM) {
+      // Trim trailing "from my list", "off the list", "as a client", etc.
+      const name = cleanName(removeM[1].replace(/\s+\b(from|off|as|on)\b.*$/i, "").trim());
+      if (name) return { intent: "update_status", confidence: 0.6, status: "completed", client_name: name };
+    }
+  }
+
   if (!looksJob && /\b(accepted|said yes|says yes|are in|is in|signed|booked|declined|said no|lost|went with|going with|chose (?:someone|another)|someone else|dijo que s[ií]|empieza|perdimos|perd[ií]|rechaz|acept)/i.test(lower)) {
     const nameM = t.match(/^(?:mark\s+|lost the\s+|perdimos (?:el|la|a)\s+)?([a-zà-ÿ][a-zà-ÿ .'’-]+?)\b/i);
     return { intent: "update_status", confidence: 0.55, status: t, client_name: cleanName(nameM?.[1]), ...extractSchedule(t) };

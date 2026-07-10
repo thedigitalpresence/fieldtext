@@ -309,6 +309,41 @@ test("G4: courtesy words never pollute names", async () => {
   }
 });
 
+// ── G7: removing a client works over text and suggests pausing ────────────────
+test("G7: 'remove/drop/get rid of/fire X' removes the client and offers pause", async () => {
+  for (const verb of ["remove", "drop", "get rid of", "fire", "dump"]) {
+    SCENARIOS++;
+    await reset(FULL_BOOK);
+    const reply = await say(`${verb} Bob Johnson`);
+    assert.doesNotMatch(reply, /can'?t|cannot|no puedo|not able/i, `"${verb}" must not refuse → "${reply}"`);
+    assert.match(reply, /off your active list|took|removed|quit[eé]|lista activa/i, `"${verb}" should remove → "${reply}"`);
+    assert.match(reply, /pause/i, `"${verb}" should suggest pausing → "${reply}"`);
+    const row = await getClient("Bob Johnson");
+    assert.equal(row!.status, "completed", `"${verb}" marks completed`);
+  }
+});
+
+test("G7: the suggested 'pause X' reply parks them in the paused category", async () => {
+  await convo("G7 remove-then-pause", FULL_BOOK, [
+    { send: "get rid of The Smiths", expect: [/pause/i] },
+    // Change of mind: pause instead. (Re-add first since the demo removed them.)
+    { send: "pause The Smiths until March", expect: [/Paused ⏸/i, /not lost/i] },
+  ]);
+  const row = await getClient("The Smiths");
+  assert.equal(row!.status, "paused", "ends up paused, in its own dashboard group");
+});
+
+test("G7: 'done with X for good' removes, but a finished job does NOT", async () => {
+  await reset(FULL_BOOK);
+  const removed = await say("done with Maria Lopez for good");
+  assert.match(removed, /off your active list|took|removed/i, `relationship end removes → "${removed}"`);
+  assert.equal((await getClient("Maria Lopez"))!.status, "completed");
+
+  await reset(FULL_BOOK);
+  const job = await say("finished mowing at Dee Garcia");
+  assert.equal((await getClient("Dee Garcia"))!.status, "active", "a finished visit never removes the client");
+});
+
 // ── G6: notes + photos ─────────────────────────────────────────────────────────
 test("G6: note-first prospect — note before any quote creates a prospect with the note", async () => {
   await convo("G6 note-new", [], [
