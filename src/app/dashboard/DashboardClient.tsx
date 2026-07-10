@@ -812,11 +812,15 @@ function ClientDetail({
             </dl>
           )}
 
-          {/* Quick actions */}
-          <div className="grid grid-cols-2 gap-2">
-            <ActionBtn action={markStatus} fields={{ clientId: client.id, status: "active" }} label={L.markAccepted} primary />
-            <ActionBtn action={markStatus} fields={{ clientId: client.id, status: "lost" }} label={L.markDeclined} confirmText={L.confirmDecline} />
-          </div>
+          {/* Quick actions: a quote can be accepted or declined; anyone else can only be removed */}
+          {client.status === "quoted" ? (
+            <div className="grid grid-cols-2 gap-2">
+              <ActionBtn action={markStatus} fields={{ clientId: client.id, status: "active" }} label={L.markAccepted} primary />
+              <ActionBtn action={markStatus} fields={{ clientId: client.id, status: "lost" }} label={L.markDeclined} confirmText={L.confirmDecline} />
+            </div>
+          ) : (
+            <ActionBtn action={markStatus} fields={{ clientId: client.id, status: "completed" }} label={L.removeClient} confirmText={L.confirmRemove} />
+          )}
 
           {/* Add note / reminder / payment */}
           <MiniForm action={addNote} clientId={client.id} name="note" placeholder={L.notePlaceholder} button={L.addNote} />
