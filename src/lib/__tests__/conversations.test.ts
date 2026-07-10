@@ -431,6 +431,51 @@ test("G8: an oddly formatted / international number still attaches", async () =>
   assert.ok(!/number|her/i.test(String(row!.service_description ?? "")), "filler didn't leak into service");
 });
 
+// ── G10: quote close-loop — nudge reply drives won / lost / keep-chasing ──────
+async function armQuoteStatus(clientId: string) {
+  const expiresAt = new Date(Date.now() + 18 * 3600 * 1000).toISOString();
+  await db().from("authorized_phones")
+    .update({ pending_state: { kind: "quote_status", action: { intent: "update_status", confidence: 1, client_id: clientId }, expiresAt } })
+    .eq("phone", "+15550001111");
+}
+
+test("G10: 'they're in' closes the quote WON (client → active, nudges cancelled)", async () => {
+  await reset([{ name: "Jane Doe", address: "5 Oak St", status: "quoted", amount: 200 }]);
+  const jane = await getClient("Jane Doe");
+  await armQuoteStatus(jane!.id);
+  const reply = await say("they're in!");
+  assert.match(reply, /in!|active/i, `won → "${reply}"`);
+  assert.equal((await getClient("Jane Doe"))!.status, "active");
+});
+
+test("G10: 'they passed' closes the quote LOST", async () => {
+  await reset([{ name: "Jane Doe", address: "5 Oak St", status: "quoted", amount: 200 }]);
+  await armQuoteStatus((await getClient("Jane Doe"))!.id);
+  const reply = await say("they passed, went with someone else");
+  assert.match(reply, /passed|lost/i, `lost → "${reply}"`);
+  assert.equal((await getClient("Jane Doe"))!.status, "lost");
+});
+
+test("G10: 'no reply yet' keeps chasing — stays quoted and schedules the next check", async () => {
+  await reset([{ name: "Jane Doe", address: "5 Oak St", status: "quoted", amount: 200 }]);
+  const jane = await getClient("Jane Doe");
+  await armQuoteStatus(jane!.id);
+  const reply = await say("no reply yet");
+  assert.match(reply, /staying on|check back|recuerdo/i, `keeps chasing → "${reply}"`);
+  assert.equal((await getClient("Jane Doe"))!.status, "quoted", "still an open quote");
+  const { data: rem } = await db().from("reminders").select("*").eq("client_id", jane!.id).eq("kind", "quote_followup").eq("status", "pending");
+  assert.ok((rem as unknown[]).length >= 1, "a follow-up check was scheduled");
+});
+
+test("G10: a custom time on the reply ('remind me friday') is honored", async () => {
+  await reset([{ name: "Jane Doe", address: "5 Oak St", status: "quoted", amount: 200 }]);
+  const jane = await getClient("Jane Doe");
+  await armQuoteStatus(jane!.id);
+  const reply = await say("not yet, remind me friday");
+  assert.match(reply, /Fri|staying on/i, `honors custom time → "${reply}"`);
+  assert.equal((await getClient("Jane Doe"))!.status, "quoted");
+});
+
 // ── G8c: a photo mid-intake attaches to the client in focus (context kept) ────
 async function sayPhoto(body: string): Promise<string> {
   SID++;

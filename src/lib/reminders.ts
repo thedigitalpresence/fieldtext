@@ -46,7 +46,9 @@ export async function scheduleQuoteReminders(business: Business, client: Client)
   const days = business.settings?.quote_reminder_days ?? [2, 5, 7, 14];
   const now = Date.now();
   const amountStr = client.amount != null ? ` (${money(client.amount)}${periodLabel(client.billing_period, lang)})` : "";
-  const text = t.quoteNudge(client.name, amountStr, lang);
+  // Interactive: the first nudge asks "did you send it?"; the reply drives the
+  // close loop (won/lost/keep-chasing) from there.
+  const text = t.quoteAskSent(client.name, amountStr, lang);
 
   const due: string[] = [];
   for (const d of days) {
@@ -158,8 +160,21 @@ export async function runDueForBusiness(business: Business, now: Date): Promise<
     const ok = await deliver(business, body);
     if (ok) {
       await db().from("reminders").update({ status: "sent", sent_at: now.toISOString() }).eq("id", r.id);
-      if (r.kind === "quote_followup") summary.quote_followups_sent++;
-      else summary.reminders_sent++;
+      if (r.kind === "quote_followup") {
+        summary.quote_followups_sent++;
+        // Arm the close loop: the owner's next reply ("sent it" / "they're in" /
+        // "no reply") is read as a status update on THIS client. 18h window so a
+        // reply hours later still lands.
+        if (r.client_id) {
+          const pending = {
+            kind: "quote_status",
+            action: { intent: "update_status", confidence: 1, client_id: r.client_id },
+            expiresAt: new Date(now.getTime() + 18 * 60 * 60 * 1000).toISOString(),
+          };
+          const phone = await getPrimaryPhone(business.id);
+          if (phone) await db().from("authorized_phones").update({ pending_state: pending }).eq("id", phone.id);
+        }
+      } else summary.reminders_sent++;
     }
   }
 

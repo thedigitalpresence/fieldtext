@@ -445,7 +445,62 @@ export async function resolvePending(
     }
     return t.infoSaved(client.name, savedBits, lang);
   }
+
+  // The quote close-loop: a nudge asked "did you send it / any word back?" and
+  // this is the answer. Won/lost close it; anything else keeps us chasing.
+  if (pending.kind === "quote_status") {
+    const clientId = pending.action.client_id;
+    if (!clientId) return null;
+    const all = await listClients(business.id);
+    const client = all.find((c) => c.id === clientId);
+    if (!client) return null;
+
+    const verdict = classifyQuoteStatus(a, ctx.nowISO);
+    if (verdict === "won") {
+      await updateClient(clientId, { status: "active", last_nudged_at: null });
+      await cancelQuoteReminders(clientId, business.id);
+      return t.quoteWon(client.name, lang);
+    }
+    if (verdict === "lost") {
+      await updateClient(clientId, { status: "lost" });
+      await cancelQuoteReminders(clientId, business.id);
+      return t.quoteLostAck(client.name, lang);
+    }
+    if (verdict === "waiting") {
+      // Keep chasing: replace the pre-scheduled sequence with ONE next check at
+      // the time they asked for (or +6h by default). If they haven't SENT it yet
+      // we re-ask "did you send it?"; if they've sent it we ask "any word back?".
+      await cancelQuoteReminders(clientId, business.id);
+      const notSent = /\b(not yet|haven'?t|didn'?t|no he|todav[ií]a no|sin enviar)\b/i.test(a);
+      const amountStr = client.amount != null ? ` (${money(client.amount)}${periodLabel(client.billing_period, lang)})` : "";
+      const text = notSent ? t.quoteAskSent(client.name, amountStr, lang) : t.quoteAskReply(client.name, amountStr, lang);
+      const custom = resolveDate(a, ctx.nowISO);
+      const dueISO = custom ? custom.iso : new Date(new Date(ctx.nowISO).getTime() + 6 * 60 * 60 * 1000).toISOString();
+      await createReminder({ businessId: business.id, clientId, text, dueISO, kind: "quote_followup" });
+      const whenStr = custom ? formatWhen(dueISO, business.timezone, lang) : (lang === "es" ? "en 6 h" : "in 6h");
+      return t.quoteChaseAgain(client.name, whenStr, lang);
+    }
+    // Unrelated message — keep the question open (sticky) and let it parse normally.
+    session.pending = pending;
+    return null;
+  }
   return null;
+}
+
+/** Read a quote-status reply. Ambiguous defaults to "waiting" — we stay on them. */
+function classifyQuoteStatus(a: string, _nowISO: string): "won" | "lost" | "waiting" | "unknown" {
+  const s = a.toLowerCase().trim();
+  // Clear acceptance only (bare "yes" means "yes I sent it" → waiting, not won).
+  if (/\b(they'?re in|(?:they |he |she )?accepted|say yes|said yes|signed|booked|hired|we won|closed the deal|on board|good to go|let'?s go)\b/i.test(s)
+    || /\b(acept[oó]|aceptaron|firm[oó]|contrat[oó]|de acuerdo|adentro)\b/i.test(s)) return "won";
+  // Clear loss.
+  if (/\b(passed|pass|declined|decline|not interested|went with|going with|ghosted|gone cold|it'?s dead|dead lead|lost it)\b/i.test(s)
+    || /\b(pas[oó]|rechaz|no quiso|no quieren|perd[ií]|se fue con)\b/i.test(s)) return "lost";
+  // Anything status-ish (or a date, or a bare yes/no) → keep chasing.
+  if (/\b(not yet|no reply|no response|no word|nothing|haven'?t|hasn'?t|didn'?t|still|waiting|sent|send|pending|soon|tomorrow|today|tonight|later|next|no|nope|yes|yep|yeah|remind|check)\b/i.test(s)
+    || /\b(todav[ií]a no|sin respuesta|esperando|enviad|mand[eé]|luego|ma[ñn]ana|s[ií]|recu[eé]rda)\b/i.test(s)
+    || resolveDate(a, _nowISO) != null) return "waiting";
+  return "unknown";
 }
 
 // ── Shared helpers ────────────────────────────────────────────────────────────

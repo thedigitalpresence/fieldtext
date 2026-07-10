@@ -168,8 +168,10 @@ export async function handleInbound(params: InboundParams): Promise<InboundOutco
         await logSms(business, { direction: "outbound", body: resolved, messageId: outId });
         return { twiml: replyTwiml(resolved), authorized: true };
       }
-      // Unrelated text — clear the stale question and parse normally.
-      await db().from("authorized_phones").update({ pending_state: null }).eq("id", authPhone.id);
+      // Unrelated text — clear the stale question and parse normally. (A sticky
+      // pending like the quote close-loop re-sets session.pending so it survives
+      // an interleaved command and still catches the status reply later.)
+      await db().from("authorized_phones").update({ pending_state: session.pending ?? null }).eq("id", authPhone.id);
     } catch (e) {
       console.error("[inbound] pending resolution failed:", e);
     }

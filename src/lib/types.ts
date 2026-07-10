@@ -28,7 +28,7 @@ export interface BusinessSettings {
 
 /** Conversation memory: the pending question the next inbound text may answer. */
 export interface PendingState {
-  kind: "which_client" | "confirm_create" | "missing_amount" | "confirm_match" | "complete_client" | "attach_photo";
+  kind: "which_client" | "confirm_create" | "missing_amount" | "confirm_match" | "complete_client" | "attach_photo" | "quote_status";
   action: ParsedAction; // the action to run once resolved
   candidateIds?: string[]; // which_client choices in order / confirm_match's single candidate
   missing?: string[]; // complete_client: which fields we're still chasing ("name"|"address"|"phone")
