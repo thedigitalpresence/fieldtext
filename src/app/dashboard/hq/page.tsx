@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Wallet, ClipboardList, Users, Sparkles, ExternalLink, UserPlus, Eye, Activity } from "lucide-react";
+import { Wallet, ClipboardList, Users, Sparkles, ExternalLink, UserPlus, Eye, Activity, Send, MessageCircle } from "lucide-react";
 import { db, currentSession, listBusinesses } from "@/lib/supabase";
-import { getTwilioUsage } from "@/lib/twilio-usage";
+import { getTwilioUsage, getTwilioDelivery } from "@/lib/twilio-usage";
 import { getUptimeStatus } from "@/lib/uptime";
 import { loadWaitlistLeads } from "../waitlist/data";
 import { WaitlistPanel } from "../waitlist/WaitlistClient";
@@ -30,15 +30,23 @@ export default async function HqPage() {
   const monthStart = new Date();
   monthStart.setUTCDate(1);
   monthStart.setUTCHours(0, 0, 0, 0);
+  const weekStart = new Date(Date.now() - 7 * 86400_000).toISOString();
 
-  const [usage, uptime, leads, businesses, phonesRes, inboundRes] = await Promise.all([
+  const [usage, delivery, uptime, leads, businesses, phonesRes, inboundRes, weekRes] = await Promise.all([
     getTwilioUsage(),
+    getTwilioDelivery(),
     getUptimeStatus(),
     loadWaitlistLeads(),
     listBusinesses(),
     db().from("authorized_phones").select("*"),
     db().from("messages").select("id", { count: "exact", head: true }).eq("direction", "inbound").gte("created_at", monthStart.toISOString()),
+    db().from("messages").select("from_phone").eq("direction", "inbound").gte("created_at", weekStart),
   ]);
+
+  // Engagement this week: how many texts came in, from how many distinct people.
+  const weekRows = (weekRes.data ?? []) as { from_phone: string | null }[];
+  const weekTexts = weekRows.length;
+  const activePeople = new Set(weekRows.map((r) => r.from_phone).filter(Boolean)).size;
 
   const phones = (phonesRes.data ?? []) as AuthorizedPhone[];
   const operators = businesses.map((b) => {
@@ -66,6 +74,24 @@ export default async function HqPage() {
 
       {/* ── Site status ───────────────────────────────────────── */}
       <SiteStatus uptime={uptime} />
+
+      {/* ── Activity + delivery ───────────────────────────────── */}
+      <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+          <span className="flex items-center gap-2 text-sm font-medium text-gray-700"><MessageCircle className="h-4 w-4 text-brand-dark" /> Activity, last 7 days</span>
+          <div className="mt-2 flex gap-6">
+            <div>
+              <p className="text-2xl font-bold tracking-tight text-gray-900">{weekTexts}</p>
+              <p className="text-xs text-gray-500">texts in</p>
+            </div>
+            <div>
+              <p className="text-2xl font-bold tracking-tight text-gray-900">{activePeople}</p>
+              <p className="text-xs text-gray-500">active {activePeople === 1 ? "person" : "people"}</p>
+            </div>
+          </div>
+        </div>
+        <TextDelivery d={delivery} />
+      </section>
 
       {/* ── Costs ─────────────────────────────────────────────── */}
       <section className="space-y-3">
@@ -167,6 +193,40 @@ function SiteStatus({ uptime }: { uptime: import("@/lib/uptime").UptimeStatus })
         <p className="mt-1 text-xs text-amber-700">Couldn&apos;t reach UptimeRobot just now — reload in a minute.</p>
       )}
     </section>
+  );
+}
+
+function TextDelivery({ d }: { d: import("@/lib/twilio-usage").TwilioDelivery }) {
+  if (!d.ok) {
+    return (
+      <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
+        <span className="flex items-center gap-2 text-sm font-medium text-gray-700"><Send className="h-4 w-4 text-brand-dark" /> Text delivery, last 7 days</span>
+        <p className="mt-2 text-xs text-amber-700">Couldn&apos;t reach Twilio just now — reload in a minute.</p>
+      </div>
+    );
+  }
+  const hasFailures = d.failed > 0;
+  return (
+    <div className={`rounded-2xl border p-4 shadow-sm ${hasFailures ? "border-amber-200 bg-amber-50" : "border-gray-100 bg-white"}`}>
+      <span className="flex items-center gap-2 text-sm font-medium text-gray-700"><Send className="h-4 w-4 text-brand-dark" /> Text delivery, last 7 days</span>
+      {d.outbound === 0 ? (
+        <p className="mt-2 text-sm text-gray-400">No texts sent yet this week.</p>
+      ) : (
+        <>
+          <div className="mt-2 flex items-baseline gap-2">
+            <p className="text-2xl font-bold tracking-tight text-gray-900">{d.deliveryRate != null ? `${d.deliveryRate.toFixed(0)}%` : "—"}</p>
+            <p className="text-xs text-gray-500">got through · {d.outbound} sent</p>
+          </div>
+          <p className="mt-1 text-xs text-gray-500">
+            {d.failed === 0 ? (
+              <span className="text-green-700">No failures 🎉</span>
+            ) : (
+              <span className="font-medium text-amber-800">{d.failed} failed{d.topError ? ` · top error ${d.topError.code}` : ""}</span>
+            )}
+          </p>
+        </>
+      )}
+    </div>
   );
 }
 
