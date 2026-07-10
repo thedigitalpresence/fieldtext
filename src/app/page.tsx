@@ -25,7 +25,7 @@ export default function Home() {
         </h1>
         <div className="flex max-w-lg flex-col gap-2 text-gray-600 [text-wrap:balance]">
           <p className="text-xl font-semibold text-gray-900">Run your whole business with a text message.</p>
-          <p className="text-lg">Text one number. It keeps everything straight and texts&nbsp;you&nbsp;back.</p>
+          <p className="text-lg">One number keeps everything straight and texts&nbsp;you&nbsp;back.</p>
         </div>
         <p className="max-w-md text-sm text-gray-500">
           Built for people in the field: {FOR_WHO.join(", ")}, and anyone who runs jobs on the go.
