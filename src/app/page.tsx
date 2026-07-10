@@ -7,11 +7,11 @@ export const metadata = { title: "FieldText: Run your business by text" };
 
 const FOR_WHO = ["Landscapers", "Handymen", "House cleaners", "Painters", "Pool techs", "Pressure washers"];
 const FEATURES = [
-  "Text a quote, job, or payment as it happens — plain words, English or Spanish",
-  "Text a photo or note to any client (gate codes, dogs, before and after pics)",
-  "Text \"who owes me?\" and it tells you who owes what",
-  "Text \"invoice Bob\" and it makes one you can forward to get paid",
-  "Text a question anytime, like \"what's Monday look like?\"",
+  "Log quotes, jobs, and payments as they happen",
+  "Notes and photos on every client (gate codes, dogs, before/after)",
+  "\"Who owes me?\" gets an instant answer",
+  "\"Invoice Bob\" makes one you can forward to get paid",
+  "Ask anything, like \"what's Monday look like?\"",
 ];
 
 export default function Home() {
@@ -49,7 +49,7 @@ export default function Home() {
       {/* Demo */}
       <DemoWidget />
 
-      {/* Marquee feature — the follow-up close loop */}
+      {/* Marquee feature: the follow-up close loop */}
       <section className="w-full max-w-lg rounded-2xl border border-brand/25 bg-brand/5 p-6 text-left shadow-sm">
         <div className="flex items-center gap-2">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand text-white"><Repeat className="h-5 w-5" /></span>
@@ -57,8 +57,8 @@ export default function Home() {
         </div>
         <h2 className="mt-3 text-2xl font-bold tracking-tight text-gray-900">It chases every quote for you.</h2>
         <p className="mt-2 text-gray-600">
-          Send a quote and FieldText remembers so you don&apos;t have to. Every one gets a
-          <span className="font-semibold text-gray-900"> 4-touch follow-up</span> — it keeps checking in with you until
+          Send a quote and FieldText remembers so you don&apos;t have to. Everyone gets a
+          <span className="font-semibold text-gray-900"> 4-touch follow-up</span>. It keeps checking in with you until
           the job is won or the customer&apos;s out.
         </p>
       </section>
