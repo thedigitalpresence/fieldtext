@@ -132,7 +132,7 @@ const CHECKLIST: { title: string; detail: string; done: boolean }[] = [
   { title: "FOUNDER_ALERT_PHONE set", done: true, detail: "Done — your cell is set, so lockouts, signup floods, cron errors, message caps, and new signups all text you." },
   // ⬜ Still to do
   { title: "All Supabase migrations run", done: true, detail: "Done — 0013 (beta hardening), 0014 (client-linked expenses), 0015 (waitlist), and 0016 (waitlist email) are all applied." },
-  { title: "Confirm the weekly backup cron", done: false, detail: "Vercel → Settings → Cron Jobs should show /api/cron/backup (Sundays). Hobby allows exactly 2 crons." },
+  { title: "Weekly backup cron confirmed", done: true, detail: "Done — /api/cron/backup runs Sundays, snapshots all tables to the private Supabase 'backups' bucket (keeps 8 weeks). Verified it writes a snapshot." },
   { title: "Netlify site redirected", done: true, detail: "Done — fieldtext.netlify.app now 301-redirects every path to fieldtextapp.com (drag-and-drop _redirects deploy). No more leads into a void." },
   { title: "A2P opt-in URL current?", done: false, detail: "Your Twilio campaign should point at https://fieldtextapp.com/signup as the opt-in proof. If it still shows the old Netlify URL, update it." },
 ];
