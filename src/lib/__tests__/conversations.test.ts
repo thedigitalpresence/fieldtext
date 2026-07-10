@@ -344,6 +344,32 @@ test("G7: 'done with X for good' removes, but a finished job does NOT", async ()
   assert.equal((await getClient("Dee Garcia"))!.status, "active", "a finished visit never removes the client");
 });
 
+// ── G7b: answering "which one?" by NAME resolves the pending action ───────────
+test("G7b: delete X → 'which one?' → answering the name completes the delete", async () => {
+  await reset([
+    { name: "Eric Shackelford", address: "9 Pine Rd" },
+    { name: "Eric Mitchell", address: "3 Ash Ct" },
+  ]);
+  const ask = await say("delete Eric");
+  assert.match(ask, /which|cu[aá]l|\(1\)/i, `should ask which Eric → "${ask}"`);
+  const done = await say("Eric Shackelford"); // reply with the NAME, not a number
+  assert.doesNotMatch(done, /which|cu[aá]l/i, "must not re-ask — it named the client");
+  assert.match(done, /off your active list|took|removed|✅/i, `should complete the removal → "${done}"`);
+  assert.equal((await getClient("Eric Shackelford"))!.status, "completed", "the right Eric was removed");
+  assert.notEqual((await getClient("Eric Mitchell"))!.status, "completed", "the other Eric untouched");
+});
+
+test("G7b: answering 'which one?' by last name or ordinal also works", async () => {
+  await reset([
+    { name: "Eric Shackelford", address: "9 Pine Rd" },
+    { name: "Eric Mitchell", address: "3 Ash Ct" },
+  ]);
+  await say("remove Eric");
+  const done = await say("shackelford"); // just the surname
+  assert.match(done, /off your active list|took|removed|✅/i, `surname resolves → "${done}"`);
+  assert.equal((await getClient("Eric Shackelford"))!.status, "completed");
+});
+
 // ── G8: "need to send quote for <Name>" = prospect intake, stays in conversation ─
 test("G8: 'send quote for Jane' creates a prospect and chases phone (no price ask)", async () => {
   await reset([]);

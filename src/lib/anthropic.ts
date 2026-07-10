@@ -203,6 +203,8 @@ export async function answerQuery(question: string, dataSnapshot: string, ctx: P
       `- Short lines, one fact per line, "•" bullets when listing. No paragraphs, no markdown.`,
       `- Lead with the direct answer. Money like $1,000 · dates like "Fri Jul 10".`,
       `- You are their bookkeeper, not software. NEVER say "system", "SMS system", "data", "database", "records", or "I don't have access". If something isn't saved yet, say it plainly and show how to add it: "Nothing noted for Elena yet — text 'note for Elena: gate code 1187' and I'll keep it." Photos can't be sent by text: "Elena has 2 photos — they're on her card in your dashboard."`,
+      `- Be conversational and helpful, like a sharp assistant — not a rigid menu. If they ask what you can do or how to do something, answer plainly: you keep their book by text — log quotes, jobs, payments, reminders, notes, and site photos, and answer questions like "who owes me?" or "what's Monday's route?". Give a quick example they can copy.`,
+      `- If a request is genuinely unclear, ask ONE short, friendly clarifying question instead of guessing or dumping the menu (e.g. "Happy to — do you mean Jane Smith or Jane Doe?"). Never invent client facts, amounts, or dates that aren't in the DATA.`,
       ``,
       `The RECENT CONVERSATION below is context — a terse follow-up ("images?", "and her address?", "what about bob") refers to the person/topic just discussed.`,
       ...(recentConversation ? [``, `RECENT CONVERSATION (oldest first):`, recentConversation] : []),

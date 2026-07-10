@@ -91,11 +91,22 @@ async function runAction(
     case "price_change": return priceChange(business, p, session, lang);
     case "request_invoice": return requestInvoice(business, p, session, lang);
     case "help":
-    default:
-      // Explicit "help" gets the menu; anything unparsed gets recovery copy.
-      return /^\s*(help|ayuda|menu|menú)\s*$/i.test(rawText) || p.confidence >= 0.4
-        ? t.helpHint(lang)
-        : t.didntCatch(lang);
+    default: {
+      const rt = rawText.trim();
+      // Explicit help/menu → the menu.
+      if (/^\s*(help|ayuda|menu|menú)\s*$/i.test(rt)) return t.helpHint(lang);
+      // A real question or conversational ask ("how do I...", "can you track
+      // expenses?", "what should I do about Bob?") → answer it conversationally
+      // (the answerer has the book + recent chat, and can ask its own follow-up).
+      const looksConversational =
+        /\?/.test(rt) ||
+        /\b(how|what|why|when|where|which|who|can you|could you|can i|do you|are you|is there|should i|what if|help me|c[oó]mo|qu[eé]|por qu[eé]|puedes|puedo|hay|cu[aá]l|qui[eé]n|deber[ií]a)\b/i.test(rt);
+      if (looksConversational && /[a-zà-ÿ]{2,}/i.test(rt)) {
+        return runQuery(business, { ...p, intent: "query", query_text: rt }, ctx);
+      }
+      // A partially-understood command → the menu; otherwise recovery copy.
+      return p.confidence >= 0.4 ? t.helpHint(lang) : t.didntCatch(lang);
+    }
   }
 }
 
@@ -149,20 +160,55 @@ export async function resolvePending(
 
   if (pending.kind === "which_client") {
     const ids = pending.candidateIds ?? [];
+    const all = await listClients(business.id);
+    const cands = ids.map((id) => all.find((c) => c.id === id)).filter(Boolean) as Client[];
     let chosen: string | null = null;
-    const numM = a.match(/^\(?\s*([1-4])\s*\)?\.?$/);
+
+    // 1. A number: "2", "(3)".
+    const numM = a.match(/^\(?\s*([1-9])\s*\)?\.?$/);
     if (numM) chosen = ids[Number(numM[1]) - 1] ?? null;
+
+    // 2. An ordinal word: "the first one", "second", "último".
     if (!chosen) {
-      // Try the answer as a name/address against the candidates only.
-      const all = await listClients(business.id);
-      const cands = all.filter((c) => ids.includes(c.id));
-      const norm = a.toLowerCase();
-      const hit = cands.filter((c) => c.name.toLowerCase().includes(norm) || (c.address ?? "").toLowerCase().includes(norm));
-      if (hit.length === 1) chosen = hit[0].id;
+      const ord = a.toLowerCase().match(/\b(first|1st|primero|second|2nd|segundo|third|3rd|tercero|fourth|4th|cuarto|last|[uú]ltim[oa])\b/);
+      if (ord) {
+        const idxMap: Record<string, number> = { first: 0, "1st": 0, primero: 0, second: 1, "2nd": 1, segundo: 1, third: 2, "3rd": 2, tercero: 2, fourth: 3, "4th": 3, cuarto: 3 };
+        const idx = /last|[uú]ltim/.test(ord[1]) ? cands.length - 1 : idxMap[ord[1]];
+        if (idx != null && idx >= 0) chosen = ids[idx] ?? null;
+      }
     }
-    if (!chosen) return null; // unrelated text — fall through to a normal parse
-    const action: ParsedAction = { ...pending.action, client_id: chosen };
-    return runAction(business, action, ctx, null, session, lang, a);
+
+    // 3. A name / address — substring first, then shared-token (so "shackelford"
+    // or "eric shackelford" both pick Eric Shackelford out of the Erics).
+    if (!chosen) {
+      const norm = a.toLowerCase().trim();
+      const tokens = norm.split(/[\s,]+/).filter((w) => w.length >= 2);
+      const scoreOf = (c: Client): number => {
+        const name = c.name.toLowerCase();
+        const addr = (c.address ?? "").toLowerCase();
+        if (norm && (name.includes(norm) || (addr && addr.includes(norm)))) return 3;
+        const nameTokens = name.split(/\s+/);
+        const shared = tokens.filter((tk) => nameTokens.includes(tk) || (addr && addr.includes(tk))).length;
+        return shared > 0 ? 1 + shared : 0;
+      };
+      const ranked = cands.map((c) => ({ c, s: scoreOf(c) })).filter((x) => x.s > 0).sort((x, y) => y.s - x.s);
+      if (ranked.length === 1 || (ranked.length > 1 && ranked[0].s > ranked[1].s)) chosen = ranked[0].c.id;
+    }
+
+    if (chosen) {
+      const action: ParsedAction = { ...pending.action, client_id: chosen };
+      return runAction(business, action, ctx, null, session, lang, a);
+    }
+
+    // Couldn't tell which — if the reply still reads like a pick attempt (a bare
+    // name, an address, a number), KEEP the question open and re-ask rather than
+    // dropping the whole request and answering it as something new.
+    if (/^[\p{L}\d][\p{L}\d .,'’#-]*$/u.test(a.trim())) {
+      session.pending = pending;
+      const opts = cands.map((c, i) => `(${i + 1}) ${c.name}${c.address ? ` — ${c.address}` : ""}`).join("  ");
+      return `${lang === "es" ? "Aún no sé cuál — " : "Still not sure which one — "}${t.whichClient(opts, lang)}`;
+    }
+    return null; // clearly a new topic — let it parse fresh
   }
 
   // "Whose site is this photo from?" — the reply names the client.
@@ -189,7 +235,19 @@ export async function resolvePending(
 
   if (pending.kind === "confirm_match") {
     const candidateId = pending.candidateIds?.[0];
-    if (/^\s*(yes|yeah|yep|s[ií]|dale|ok)\s*[.!]?\s*$/i.test(a) && candidateId) {
+    // "yes" confirms — and so does naming the candidate ("yes, Eric Shackelford"
+    // or just "Eric Shackelford"), which is what people naturally reply.
+    let confirms = /^\s*(yes|yeah|yep|yup|correct|that'?s (?:him|her|it|them)|s[ií]|claro|dale|ok|okay|exacto|correcto)\s*[.!]?\s*$/i.test(a);
+    if (!confirms && candidateId && /^(?:yes|s[ií])?[,\s]*[\p{L}][\p{L} .'’-]+$/u.test(a.trim())) {
+      const cand = (await listClients(business.id)).find((c) => c.id === candidateId);
+      if (cand) {
+        const name = cand.name.toLowerCase();
+        const reply = a.toLowerCase().replace(/^(yes|s[ií])[,\s]+/i, "").trim();
+        const tks = reply.split(/\s+/).filter((w) => w.length >= 2);
+        if (name.includes(reply) || tks.some((tk) => name.split(/\s+/).includes(tk))) confirms = true;
+      }
+    }
+    if (confirms && candidateId) {
       const action: ParsedAction = { ...pending.action, client_id: candidateId };
       return runAction(business, action, ctx, null, session, lang, a);
     }
