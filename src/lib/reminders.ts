@@ -5,6 +5,7 @@ import { money, periodLabel, businessLang, t } from "./templates";
 import { todayInTz } from "./normalize";
 import { generateDueCharges, totalOutstanding, openBalances } from "./charges";
 import type { AuthorizedPhone, Business, Client, Expense, Job, Reminder, Lang } from "./types";
+import type { DayWeather } from "./weather";
 
 export async function createReminder(args: {
   businessId: string;
@@ -208,8 +209,26 @@ async function maybeSendDaySheet(business: Business, now: Date): Promise<boolean
   // Nothing on the books today → stay quiet instead of texting "no stops" daily.
   if (!stops.length && !oneOffs.length && !todays.length) return false;
 
+  // Today's weather rides along when the business has set a city (same source
+  // as the dashboard: NWS first, Open-Meteo fallback; best-effort).
+  const { lat, lon } = business.settings ?? {};
+  const wx: Partial<Record<Lang, DayWeather>> = {};
+  if (typeof lat === "number" && typeof lon === "number") {
+    const { getForecast } = await import("./weather");
+    for (const lg of ["en", "es"] as Lang[]) {
+      const fc = await getForecast(lat, lon, business.timezone, lg).catch(() => [] as DayWeather[]);
+      const w = fc.find((f) => f.date === localDate);
+      if (w) wx[lg] = w;
+    }
+  }
+
   const build = (lang: Lang): string => {
     const lines = [lang === "es" ? `☀️ Hoja del día — ${business.name}` : `☀️ Day sheet — ${business.name}`];
+    const w = wx[lang];
+    if (w) {
+      const rain = w.precip != null && w.precip >= 30 ? (lang === "es" ? ` · lluvia ${w.precip}%` : ` · rain ${w.precip}%`) : "";
+      lines.push(`${w.emoji} ${w.label}, ${w.hi}°/${w.lo}°${rain}`);
+    }
     if (stops.length) {
       lines.push(lang === "es" ? `Paradas de hoy (${stops.length}):` : `Today's stops (${stops.length}):`);
       for (const c of stops.slice(0, 10)) {
