@@ -493,9 +493,13 @@ function classifyQuoteStatus(a: string, _nowISO: string): "won" | "lost" | "wait
   // Clear acceptance only (bare "yes" means "yes I sent it" → waiting, not won).
   if (/\b(they'?re in|(?:they |he |she )?accepted|say yes|said yes|signed|booked|hired|we won|closed the deal|on board|good to go|let'?s go)\b/i.test(s)
     || /\b(acept[oó]|aceptaron|firm[oó]|contrat[oó]|de acuerdo|adentro)\b/i.test(s)) return "won";
-  // Clear loss.
+  // Clear loss. "OUT" counts — but not "sent it out" (that means they sent it).
+  const saysOut = /^\s*out\.?\s*$/i.test(s)
+    || /\b(they'?re|they are|he'?s|she'?s)\s+out\b/i.test(s)
+    || /\bout on (?:this|it|the quote)\b/i.test(s);
   if (/\b(passed|pass|declined|decline|not interested|went with|going with|ghosted|gone cold|it'?s dead|dead lead|lost it)\b/i.test(s)
-    || /\b(pas[oó]|rechaz|no quiso|no quieren|perd[ií]|se fue con)\b/i.test(s)) return "lost";
+    || /\b(pas[oó]|rechaz|no quiso|no quieren|perd[ií]|se fue con|fuera)\b/i.test(s)
+    || saysOut) return "lost";
   // Anything status-ish (or a date, or a bare yes/no) → keep chasing.
   if (/\b(not yet|no reply|no response|no word|nothing|haven'?t|hasn'?t|didn'?t|still|waiting|sent|send|pending|soon|tomorrow|today|tonight|later|next|no|nope|yes|yep|yeah|remind|check)\b/i.test(s)
     || /\b(todav[ií]a no|sin respuesta|esperando|enviad|mand[eé]|luego|ma[ñn]ana|s[ií]|recu[eé]rda)\b/i.test(s)

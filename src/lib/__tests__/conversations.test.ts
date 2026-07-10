@@ -448,12 +448,20 @@ test("G10: 'they're in' closes the quote WON (client → active, nudges cancelle
   assert.equal((await getClient("Jane Doe"))!.status, "active");
 });
 
-test("G10: 'they passed' closes the quote LOST", async () => {
+test("G10: 'they're out' closes the quote LOST", async () => {
   await reset([{ name: "Jane Doe", address: "5 Oak St", status: "quoted", amount: 200 }]);
   await armQuoteStatus((await getClient("Jane Doe"))!.id);
-  const reply = await say("they passed, went with someone else");
-  assert.match(reply, /passed|lost/i, `lost → "${reply}"`);
+  const reply = await say("they're out");
+  assert.match(reply, /out|lost|passed/i, `lost → "${reply}"`);
   assert.equal((await getClient("Jane Doe"))!.status, "lost");
+});
+
+test("G10: 'sent it out' is NOT read as OUT — it keeps chasing", async () => {
+  await reset([{ name: "Jane Doe", address: "5 Oak St", status: "quoted", amount: 200 }]);
+  await armQuoteStatus((await getClient("Jane Doe"))!.id);
+  const reply = await say("sent it out, waiting to hear");
+  assert.equal((await getClient("Jane Doe"))!.status, "quoted", "'sent it out' means sent, not lost");
+  assert.match(reply, /staying on|check back/i, `keeps chasing → "${reply}"`);
 });
 
 test("G10: 'no reply yet' keeps chasing — stays quoted and schedules the next check", async () => {

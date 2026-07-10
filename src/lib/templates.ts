@@ -139,12 +139,12 @@ export const t = {
   // Interactive close-loop nudges — each asks a status so the reply drives the next step.
   quoteAskSent: (name: string, amountStr: string, lang: Lang) =>
     lang === "es"
-      ? `📣 ¿Ya le mandaste la cotización a ${name}${amountStr}? Responde ENVIADA, TODAVÍA NO — o si ya decidió: ACEPTÓ / PASÓ.`
-      : `📣 Did you send ${name} their quote${amountStr}? Reply SENT, NOT YET — or if they decided: IN / PASSED.`,
+      ? `📣 ¿Ya le mandaste la cotización a ${name}${amountStr}? Responde ENVIADA, TODAVÍA NO — o si ya decidió: ADENTRO / FUERA.`
+      : `📣 Did you send ${name} their quote${amountStr}? Reply SENT, NOT YET — or if they decided: IN / OUT.`,
   quoteAskReply: (name: string, amountStr: string, lang: Lang) =>
     lang === "es"
-      ? `📣 ¿Alguna respuesta de ${name} sobre la cotización${amountStr}? Responde ACEPTÓ, PASÓ, o SIN RESPUESTA.`
-      : `📣 Any word back from ${name} on the quote${amountStr}? Reply IN, PASSED, or NO REPLY.`,
+      ? `📣 ¿Alguna respuesta de ${name} sobre la cotización${amountStr}? Responde ADENTRO, FUERA, o SIN RESPUESTA.`
+      : `📣 Any word back from ${name} on the quote${amountStr}? Reply IN, OUT, or NO REPLY.`,
   quoteWon: (name: string, lang: Lang) =>
     lang === "es" ? `🎉 ¡${name} aceptó! Los pasé a activos.` : `🎉 ${name} is in! Moved them to active.`,
   quoteLostAck: (name: string, lang: Lang) =>
