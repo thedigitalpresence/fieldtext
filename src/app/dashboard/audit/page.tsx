@@ -2,10 +2,11 @@
  * HIDDEN internal audit report — /dashboard/audit
  * ADMIN ONLY: operators must never see this.
  *
- * Beta-Readiness edition, July 9, 2026 — the THIRD deep audit (3 independent
- * review passes). It re-scores every finding from the original July 3 audit,
- * lists what the new audit found (and which of those were fixed the same day),
- * and ends with the founder checklist of things only Eric can confirm.
+ * Beta-Readiness edition, refreshed July 10, 2026. Third deep audit (July 9,
+ * 3 independent passes) plus a July 10 refresh that flips the findings the ops
+ * work closed (cron pinger, UptimeRobot, spend guardrails), records the
+ * signup-500 caught and fixed today, and re-scores. Ends with the founder
+ * checklist — now mostly done — of things only Eric can confirm.
  */
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -25,9 +26,9 @@ const OLD_STYLE: Record<OldStatus, { chip: string; label: string }> = {
 };
 const ORIGINAL: { title: string; status: OldStatus; note: string }[] = [
   { title: "Twilio signature check off in production", status: "fixed", note: "Env cleaned up AND a code guard now ignores the bypass flag in production builds." },
-  { title: "Reminders only fire once a day", status: "partial", note: "The hour-gate bug is fixed (digests fire at-or-after the hour). But Vercel Hobby still runs cron once daily — the external cron-job.org pinger below closes this." },
+  { title: "Reminders only fire once a day", status: "fixed", note: "Closed July 10: cron-job.org pings /api/cron/run-due every 15 min (test run returned 200 OK). Reminders and quote follow-ups now fire on time all day, not once at 9 AM." },
   { title: "Real AI parser not enabled", status: "fixed", note: "ANTHROPIC_API_KEY live, claude-haiku-4-5, 8-second timeout, no retries." },
-  { title: "Failures are invisible", status: "partial", note: "Founder SMS alerts now fire on lockouts, signup floods, and message caps. Still worth adding UptimeRobot on /api/health (checklist)." },
+  { title: "Failures are invisible", status: "fixed", note: "Closed July 10: UptimeRobot monitors /api/health (app + DB) every 5 min and alerts you; live status now also shows on the founder HQ. Plus SMS alerts on lockouts, signup floods, cron errors, and message caps." },
   { title: "Signup page is a mock", status: "fixed", note: "Real signups table, verbatim consent proof + timestamp + IP, double opt-in, founder alert — and as of today an activation code." },
   { title: "“Who owes me” only ever grows", status: "fixed", note: "Full receivables ledger: payments settle charges oldest-first, dashboard has Mark paid / Delete." },
   { title: "Same-name clients create silent duplicates", status: "fixed", note: "“Which one?” prompts everywhere, last-name veto, typo guard, confirm-before-match." },
@@ -56,6 +57,10 @@ const SEV_STYLE: Record<Sev, { chip: string; bar: string; label: string }> = {
   low: { chip: "bg-sky-100 text-sky-800", bar: "bg-sky-400", label: "Low" },
 };
 const NEW_FINDINGS: { sev: Sev; area: string; title: string; why: string; done: NewStatus; note: string }[] = [
+  { sev: "high", area: "Correctness", done: "today",
+    title: "Beta signup form crashed with a 500 (found July 10)",
+    why: "The signup action file exported a plain string (the consent wording) alongside its functions. Next.js forbids that in a \"use server\" file, so it refused to load the whole action — every beta signup hit a server error page. Caught by testing the form ourselves and matching the error digest in the live logs.",
+    note: "Fixed July 10: made the constant module-private. Verified with a full production build; signup now reaches the success screen and the lead lands in HQ." },
   { sev: "critical", area: "Security", done: "today",
     title: "Signup squatting: anyone could pre-register a stranger's number",
     why: "The old flow activated a pending signup on ANY first text. An attacker who knew a target's cell could fill the form with their number and an attacker-chosen password — and silently own the account the moment the victim ever texted the line.",
@@ -115,23 +120,29 @@ const NEW_FINDINGS: { sev: Sev; area: string; title: string; why: string; done: 
 ];
 
 // ── Founder checklist — only Eric can confirm these ───────────────────────────
-const CHECKLIST: { title: string; detail: string }[] = [
-  { title: "Run migration 0013 in Supabase", detail: "SQL editor → run supabase/migrations/0013_beta_hardening.sql (two columns on signups: activation_code, timezone). Self-signup activation codes need it." },
-  { title: "Add SESSION_SIGNING_SECRET to Vercel", detail: "Settings → Environment Variables → any long random string → Redeploy. Note: everyone (you included) gets logged out once and signs back in." },
-  { title: "Set FOUNDER_ALERT_PHONE", detail: "Your cell in E.164 (+1971…). Lockouts, signup floods, message caps, and new signups all text you there." },
-  { title: "External cron pinger", detail: "cron-job.org (free) → GET https://fieldtextapp.com/api/cron/run-due with header x-cron-secret: <your CRON_SECRET> every 10–15 min. Without it, reminders only fire once a day at 9 AM Pacific." },
-  { title: "Confirm the weekly backup cron", detail: "After this deploy, Vercel → Settings → Cron Jobs should show /api/cron/backup (Sundays). Hobby allows exactly 2 crons — this is the second." },
-  { title: "UptimeRobot on /api/health", detail: "Free monitor, 5-min interval. You find out the site is down before a beta tester does, and the pings keep Supabase's free tier from pausing." },
-  { title: "Spend caps at Twilio + Anthropic", detail: "Twilio Console → set a monthly spend limit; Anthropic Console → usage limit. Belt-and-suspenders on top of the 75/day cap." },
-  { title: "Decide the Netlify site's fate", detail: "Redirect fieldtext.netlify.app to fieldtextapp.com, or take it down. Right now it can swallow leads." },
-  { title: "A2P opt-in URL current?", detail: "Your Twilio campaign should point at https://fieldtextapp.com/signup as the opt-in proof. If it still shows the old Netlify URL, update it." },
+// done items render checked; pending float to the top. Updated July 10.
+const CHECKLIST: { title: string; detail: string; done: boolean }[] = [
+  // ✅ Done as of July 10
+  { title: "External cron pinger", done: true, detail: "Done — cron-job.org hits /api/cron/run-due every 15 min (test run returned 200 OK). Reminders and quote follow-ups now fire on time all day." },
+  { title: "UptimeRobot on /api/health", done: true, detail: "Done — free 5-min monitor live. Alerts you before a tester notices, keeps free Supabase from pausing, and feeds the live status card on HQ." },
+  { title: "Twilio spend guardrails", done: true, detail: "Done — auto-recharge on (balance can't hit $0 and stop texts) plus a $60/month usage-trigger email alert." },
+  { title: "Beta waitlist table live", done: true, detail: "Done — migration 0015 run in Supabase; beta signups save and appear in HQ → Beta waitlist." },
+  // ⬜ Still to do
+  { title: "Run migration 0016 (waitlist email)", done: false, detail: "SQL editor → alter table waitlist add column if not exists email text; Needed so the new email field and invite emails work. Until it runs, the HQ waitlist may show empty." },
+  { title: "Anthropic monthly spend limit", done: false, detail: "console.anthropic.com → Settings → Limits → set a $50 monthly cap + email alerts at $10 / $25. A hard ceiling against a runaway; real usage is pennies, so it only catches a true bug." },
+  { title: "Add SESSION_SIGNING_SECRET to Vercel", done: false, detail: "Settings → Environment Variables → any long random string → Redeploy. Note: everyone (you included) gets logged out once and signs back in." },
+  { title: "Set FOUNDER_ALERT_PHONE", done: false, detail: "Your cell in E.164 (+1971…). Lockouts, signup floods, cron errors, message caps, and new signups all text you there." },
+  { title: "Confirm all migrations ran", done: false, detail: "0015 (waitlist) is confirmed. Also verify 0013 (beta hardening), 0014 (client-linked expenses), and 0016 (waitlist email) have each been run in Supabase." },
+  { title: "Confirm the weekly backup cron", done: false, detail: "Vercel → Settings → Cron Jobs should show /api/cron/backup (Sundays). Hobby allows exactly 2 crons." },
+  { title: "Decide the Netlify site's fate", done: false, detail: "Redirect fieldtext.netlify.app to fieldtextapp.com, or take it down. Right now it can swallow leads into a void." },
+  { title: "A2P opt-in URL current?", done: false, detail: "Your Twilio campaign should point at https://fieldtextapp.com/signup as the opt-in proof. If it still shows the old Netlify URL, update it." },
 ];
 
 const SCORES: { area: string; grade: string; color: string; note: string }[] = [
-  { area: "Security", grade: "A-", color: "text-brand-dark", note: "Hashed passwords, signed expiring sessions, throttles + alerts, tenant isolation verified. Remaining: the two env vars on the checklist." },
+  { area: "Security", grade: "A-", color: "text-brand-dark", note: "Hashed passwords, signed expiring sessions, throttles + alerts, tenant isolation verified; new admin pages all gated. Remaining: the two env vars on the checklist." },
   { area: "Money accuracy", grade: "A-", color: "text-brand-dark", note: "One ledger, both entry paths settle identically, billing anchors tested. Watch first real cycles in beta." },
-  { area: "Reliability", grade: "B", color: "text-amber-600", note: "Alerts + backups + caps in place. Grade hits A when the cron pinger and UptimeRobot are confirmed." },
-  { area: "Beta readiness", grade: "B+", color: "text-brand-dark", note: "Ready for testers today. The 9-item checklist below is what stands between B+ and “invite strangers.”" },
+  { area: "Reliability", grade: "A-", color: "text-brand-dark", note: "Confirmed July 10: cron pinger live (reminders fire on time), UptimeRobot watching app + DB, Twilio auto-recharge + spend alert on. Live cost/uptime/delivery tracking on HQ. Backup cron still to confirm." },
+  { area: "Beta readiness", grade: "A-", color: "text-brand-dark", note: "Cleared for testers. Signup funnel verified end to end. What's left is the short checklist below — a migration, an env var or two, and the Anthropic cap." },
 ];
 
 export default async function AuditPage() {
@@ -148,7 +159,7 @@ export default async function AuditPage() {
           <div>
             <p className="text-xs font-bold uppercase tracking-widest text-brand-dark">Internal · not linked anywhere</p>
             <h1 className="text-2xl font-bold tracking-tight text-gray-900">FieldText — Beta-Readiness Audit</h1>
-            <p className="mt-0.5 text-sm text-gray-500">Third deep dive · July 9, 2026 · 3 independent review passes · re-scores the July 3 audit</p>
+            <p className="mt-0.5 text-sm text-gray-500">Refreshed July 10, 2026 · ops checklist now mostly cleared · beta waitlist + founder HQ shipped</p>
           </div>
         </div>
         <Link href="/dashboard/roadmap" className="flex shrink-0 items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:border-brand/40">
@@ -163,11 +174,12 @@ export default async function AuditPage() {
           <h2 className="font-bold text-gray-900">The verdict, in one paragraph</h2>
         </div>
         <p className="mt-2 text-sm leading-6 text-gray-700">
-          FieldText is ready for beta testers. Of the original audit&apos;s 20 findings, <strong>{fixedCount} are fully fixed</strong>,
-          3 are partial, and 1 low-risk item stays open. This third audit went looking for what the new work introduced —
-          it found one critical hole (signup squatting) and a cluster of money-trust and tenant-isolation bugs, and{" "}
-          <strong>{todayCount} of its {NEW_FINDINGS.length} findings were fixed the same day</strong>, with tests. What&apos;s left is not code:
-          it&apos;s the <strong>9-item checklist</strong> at the bottom — env vars, cron pinger, monitors — that only you can confirm.
+          FieldText is cleared for beta testers. Of the original audit&apos;s 20 findings, <strong>{fixedCount} are fully fixed</strong>
+          and only 2 low-risk items remain. The July 9 audit&apos;s findings are all fixed, with tests. Since then the operational
+          backstops have gone live — <strong>cron pinger, UptimeRobot, and Twilio spend guardrails are all done</strong> — and a
+          beta waitlist + a founder HQ (live cost, uptime, delivery, and activity tracking) shipped. Today&apos;s refresh also
+          caught and fixed a signup-form 500 before any real tester hit it. What&apos;s left is the short{" "}
+          <strong>{CHECKLIST.filter((c) => !c.done).length}-item checklist</strong> below — a migration, an env var or two, and the Anthropic cap.
         </p>
       </section>
 
@@ -183,21 +195,33 @@ export default async function AuditPage() {
       </section>
 
       {/* Founder checklist */}
-      <section className="rounded-2xl border border-red-200 bg-red-50/50 p-5">
-        <div className="mb-3 flex items-center gap-2">
-          <ClipboardCheck className="h-5 w-5 text-red-700" />
-          <h2 className="text-base font-bold text-gray-900">Must-confirm before inviting testers — only you can do these</h2>
-          <span className="text-sm text-gray-400">({CHECKLIST.length})</span>
-        </div>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
-          {CHECKLIST.map((c, i) => (
-            <div key={c.title} className="rounded-xl border border-red-100 bg-white p-3.5 shadow-sm">
-              <p className="text-sm font-semibold text-gray-900"><span className="mr-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-red-100 text-[11px] font-bold text-red-700">{i + 1}</span>{c.title}</p>
-              <p className="mt-1 text-xs leading-5 text-gray-600">{c.detail}</p>
+      {(() => {
+        const pending = CHECKLIST.filter((c) => !c.done);
+        const done = CHECKLIST.filter((c) => c.done);
+        return (
+          <section className="rounded-2xl border border-red-200 bg-red-50/50 p-5">
+            <div className="mb-3 flex items-center gap-2">
+              <ClipboardCheck className="h-5 w-5 text-red-700" />
+              <h2 className="text-base font-bold text-gray-900">Founder checklist before inviting testers</h2>
+              <span className="text-sm text-gray-400">({done.length}/{CHECKLIST.length} done)</span>
             </div>
-          ))}
-        </div>
-      </section>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+              {pending.map((c, i) => (
+                <div key={c.title} className="rounded-xl border border-red-100 bg-white p-3.5 shadow-sm">
+                  <p className="text-sm font-semibold text-gray-900"><span className="mr-1.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-red-100 text-[11px] font-bold text-red-700">{i + 1}</span>{c.title}</p>
+                  <p className="mt-1 text-xs leading-5 text-gray-600">{c.detail}</p>
+                </div>
+              ))}
+              {done.map((c) => (
+                <div key={c.title} className="rounded-xl border border-green-100 bg-green-50/40 p-3.5 shadow-sm">
+                  <p className="flex items-start gap-1.5 text-sm font-semibold text-gray-500 line-through decoration-green-500/40"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-brand" />{c.title}</p>
+                  <p className="mt-1 text-xs leading-5 text-gray-500 no-underline">{c.detail}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        );
+      })()}
 
       {/* New findings */}
       <section>
@@ -256,7 +280,7 @@ export default async function AuditPage() {
       </section>
 
       <footer className="pb-4 text-center text-xs text-gray-400">
-        FieldText internal audit · July 9, 2026 · findings verified against source; fixes covered by the 106-test suite
+        FieldText internal audit · refreshed July 10, 2026 · findings verified against source and live logs; fixes covered by the test suite
       </footer>
     </main>
   );
