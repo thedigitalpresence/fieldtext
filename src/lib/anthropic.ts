@@ -58,6 +58,7 @@ const ACTION_PROPS = {
   billing_period: { type: "string", enum: ["one_time", "weekly", "biweekly", "monthly"] },
   service_description: { type: "string", description: "Short phrase, e.g. 'full coverage', 'mowing'." },
   status: { type: "string", enum: ["quoted", "active", "completed", "lost"] },
+  awaiting_quote: { type: "boolean", description: "log_quote for a prospect you still need to send a price to (no amount yet), e.g. 'need to send quote for Jane'." },
   service_interval: { type: "string", enum: ["weekly", "biweekly", "monthly"], description: "Recurring service cadence." },
   service_day: { type: "string", description: "Preferred service day, e.g. 'tuesday'." },
   job_description: { type: "string" },
@@ -104,6 +105,7 @@ function systemPrompt(ctx: ParseContext): string {
     `The owner texts fast: lowercase, no punctuation, abbreviations, typos, English / Spanish / Spanglish, and often several facts in one message. Detect the language per message and extract the same canonical data regardless.`,
     `Return an ARRAY of actions via the record_actions tool — one message can contain several. ALWAYS split these out:`,
     `  • "Quoting James at 222 West St, need to send the quote tomorrow" = TWO actions: log_quote (James, 222 West St) AND set_reminder (reminder_text "send James quote", due tomorrow).`,
+    `  • "Need to send quote for Jane" / "gotta quote Jane" / "send Jane a quote" (a prospect you haven't priced yet) = TWO actions: log_quote (Jane, awaiting_quote=true, NO amount — this creates the prospect so their phone/notes get collected) AND set_reminder (reminder_text "send Jane quote", due tomorrow if no date given). Do NOT invent an amount for these.`,
     `  • An obligation phrase — "need to / gotta / have to / got to / don't forget to / remember to <do X> <time>" — is ALWAYS its own set_reminder action, in addition to whatever else is in the message.`,
     ``,
     `Current date/time: ${ctx.nowISO} (timezone ${ctx.timezone}). Resolve every relative date ("friday"/"viernes", "in 3 days"/"en 3 días", "the 19th"/"el 19", "tomorrow"/"mañana") to a concrete value in that timezone. Reminders default to 9:00 AM local.`,
@@ -331,6 +333,17 @@ function parseClause(text: string, _ctx: ParseContext): Record<string, any> | nu
   // Question -> query (unless it's a reminder)
   if (isQuestion(t) && !/\b(remind me|recu[eé]rda)/i.test(lower)) {
     return { intent: "query", confidence: 0.6, query_text: t };
+  }
+
+  // "(need to) send/prep/write a quote for/to <Name>" — a prospect to be quoted
+  // LATER (no amount yet). Create them so their contact info gets collected and
+  // the conversation stays open; the amount comes when the quote is actually sent.
+  const toQuoteM = t.match(/\b(?:send|sending|prep(?:are)?|write|writing|do|doing|make|making|get|give)\s+(?:out\s+)?(?:a\s+|the\s+)?quote\s+(?:for|to)\s+(?:the |los |las |el |la |a )?([a-zà-ÿ][a-zà-ÿ .'’-]+)/i);
+  const hasAmount = /\$\s?\d|\b\d+\s*(?:a |per |al |por |\/)?\s*(?:months?|weeks?|mo|wk|mes|semanas?|sem)\b/i.test(lower);
+  if (toQuoteM && !hasAmount) {
+    // Trim a trailing time phrase off the name ("...for Jane tomorrow").
+    const name = cleanName(toQuoteM[1].replace(/\s+\b(tomorrow|today|tonight|next week|on \w+|this \w+|by \w+|ma[ñn]ana|hoy)\b.*$/i, "").trim());
+    if (name) return { intent: "log_quote", confidence: 0.6, client_name: name, awaiting_quote: true };
   }
 
   // Reminder — incl. obligations ("need to send quote tomorrow") when a time is present

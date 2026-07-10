@@ -317,10 +317,27 @@ export async function resolvePending(
     const patch: Partial<Client> = {};
     let rest = a;
 
-    const phoneM = rest.match(/(\+?1?[\s\-.(]*\d{3}[)\s\-.]*\d{3}[\s\-.]*\d{4})/);
-    if (phoneM && missing.includes("phone")) {
-      patch.phone = phoneM[1].replace(/[^\d+]/g, "").replace(/^1(?=\d{10}$)/, "+1").replace(/^(?=\d{10}$)/, "+1");
-      rest = rest.replace(phoneM[1], " ").trim();
+    if (missing.includes("phone")) {
+      // Grab the longest phone-like token (handles US 3-3-4, one solid block,
+      // and long international numbers). Format by digit count so a 14-digit
+      // number is never truncated to 10 and wrongly US-normalized.
+      const tokens = rest.match(/\+?\d[\d\s\-.()]{5,18}\d/g) ?? [];
+      const best = tokens.map((s) => s.trim()).sort((a, b) => b.replace(/\D/g, "").length - a.replace(/\D/g, "").length)[0];
+      if (best) {
+        const digits = best.replace(/[^\d]/g, "");
+        if (digits.length === 10) patch.phone = `+1${digits}`;
+        else if (digits.length === 11 && digits.startsWith("1")) patch.phone = `+${digits}`;
+        else patch.phone = digits; // international / non-standard: keep verbatim
+        rest = rest.replace(best, " ").trim();
+      }
+    }
+    // Strip phone-context filler ("her number is") so it never leaks into service/address.
+    if (patch.phone) {
+      rest = rest
+        .replace(/\b(her|his|their|the|a|is|es|el|la|su|it'?s)\b/gi, " ")
+        .replace(/\b(number|n[uú]mero|phone|tel(?:[eé]fono)?|cell|celular|m[oó]vil|contact)\b/gi, " ")
+        .replace(/[#:]/g, " ")
+        .replace(/\s+/g, " ").trim();
     }
     rest = rest.replace(/^[,;·-]+|[,;·-]+$/g, "").trim();
     if (rest) {
@@ -494,6 +511,14 @@ async function logQuote(business: Business, p: ParsedAction, ctx: ParseContext, 
     });
   }
 
+  // "Need to send quote for Jane" — a prospect we haven't priced yet. Don't chase
+  // the amount (there isn't one) and don't fire quote-followup nudges (nothing
+  // was quoted). Go straight to collecting their contact info.
+  if (p.awaiting_quote) {
+    await cancelQuoteReminders(client.id, business.id);
+    return finishIntake(client, { ...p, client_id: client.id, client_is_new: isNew }, session, lang);
+  }
+
   if (targetStatus === "quoted") await scheduleQuoteReminders(business, client);
   else await cancelQuoteReminders(client.id, business.id);
 
@@ -513,7 +538,9 @@ async function logQuote(business: Business, p: ParsedAction, ctx: ParseContext, 
  * and the price-skip path so "don't know the price" still finishes intake.
  */
 function finishIntake(client: Client, baseAction: ParsedAction, session: ActionSession, lang: Lang): string {
-  const confirmation = t.quoteLogged(clientSummary(client, lang), lang);
+  const confirmation = baseAction.awaiting_quote
+    ? t.prospectAdded(client.name, lang)
+    : t.quoteLogged(clientSummary(client, lang), lang);
   if (!baseAction.client_is_new) return confirmation;
   // Chase the useful profile fields. (Name is NOT chased — "García" / "The Smiths"
   // are perfectly valid client names.)

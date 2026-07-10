@@ -255,6 +255,7 @@ export interface ParsedAction {
   // roadmap entities
   client_id?: string; // resolved by conversation memory — handlers use it directly
   client_is_new?: boolean; // set when conversation memory just created this client (completeness ask still applies)
+  awaiting_quote?: boolean; // "need to send quote for Jane" — a prospect to be quoted later (no amount yet); skip the price chase
   note_text?: string; // update_client_info: gate codes, misc notes
   phone?: string; // update_client_info
   email?: string; // update_client_info

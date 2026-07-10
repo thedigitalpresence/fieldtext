@@ -344,6 +344,39 @@ test("G7: 'done with X for good' removes, but a finished job does NOT", async ()
   assert.equal((await getClient("Dee Garcia"))!.status, "active", "a finished visit never removes the client");
 });
 
+// ── G8: "need to send quote for <Name>" = prospect intake, stays in conversation ─
+test("G8: 'send quote for Jane' creates a prospect and chases phone (no price ask)", async () => {
+  await reset([]);
+  const reply = await say("send quote for Jane");
+  assert.match(reply, /prospect|Jane/i, `should create the prospect → "${reply}"`);
+  assert.doesNotMatch(reply, /what.*amount|price|precio|cu[aá]nto/i, "must NOT ask for a price it doesn't have yet");
+  assert.match(reply, /phone|address|what'?s/i, `should chase contact info → "${reply}"`);
+  const row = await getClient("Jane");
+  assert.ok(row, "Jane exists as a prospect");
+  assert.equal(row!.status, "quoted");
+  assert.equal(row!.amount, null, "no invented amount");
+});
+
+test("G8: the follow-up number stays in the conversation and attaches", async () => {
+  await convo("G8 prospect-then-number", [], [
+    { send: "need to send quote for Jane", expect: [/phone|address|what'?s/i] },
+    { send: "her number is 5551234567", expect: [/Saved|Jane|✅/i] },
+  ]);
+  const row = await getClient("Jane");
+  assert.equal(row!.phone, "+15551234567", "number attached to Jane, not orphaned");
+});
+
+test("G8: an oddly formatted / international number still attaches", async () => {
+  await convo("G8 intl-number", [], [
+    { send: "quote for Priya", expect: [/phone|address|what'?s/i] },
+    { send: "9 birch st", expect: [/phone|what'?s/i] }, // give address, still chasing phone
+    { send: "her number is 03323848482838", expect: [/Saved|Priya|✅/i] },
+  ]);
+  const row = await getClient("Priya");
+  assert.equal(row!.phone, "03323848482838", "long non-US number captured verbatim");
+  assert.ok(!/number|her/i.test(String(row!.service_description ?? "")), "filler didn't leak into service");
+});
+
 // ── G6: notes + photos ─────────────────────────────────────────────────────────
 test("G6: note-first prospect — note before any quote creates a prospect with the note", async () => {
   await convo("G6 note-new", [], [

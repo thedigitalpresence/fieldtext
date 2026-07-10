@@ -209,8 +209,12 @@ export const t = {
     lang === "es" ? `Nota guardada ✅ en la ficha de ${name}.` : `Note saved ✅ to ${name}.`,
   anyNotes: (name: string, lang: Lang) =>
     lang === "es"
-      ? `¿Algo que anotar sobre ${name}? (código del portón, perros, detalles) — o responde OMITIR.`
-      : `Anything to note about ${name}? (gate code, dogs, details) — or reply SKIP.`,
+      ? `¿Algo que anotar sobre ${name}? (código del portón, perros, detalles) — o manda una foto del sitio. Responde OMITIR para terminar.`
+      : `Anything to note about ${name}? (gate code, dogs, details) — or text a photo of the site. Reply SKIP to finish.`,
+  prospectAdded: (name: string, lang: Lang) =>
+    lang === "es"
+      ? `Añadí a ${name} como prospecto 📝 (aún sin cotizar).`
+      : `Added ${name} as a prospect 📝 (not quoted yet).`,
   needSchedule: (name: string, lang: Lang) =>
     lang === "es"
       ? `¿Cuándo empieza el servicio de ${name}, cada cuánto y qué día? (p. ej. "semanal los lunes desde el próximo lunes" o "mensual el 1") — o responde OMITIR.`

@@ -306,6 +306,8 @@ export function normalizeAction(raw: Record<string, any>, ctx: NormalizeContext)
 
   // Roadmap entities.
   if (raw.client_id) a.client_id = String(raw.client_id);
+  if (raw.client_is_new) a.client_is_new = true;
+  if (raw.awaiting_quote) a.awaiting_quote = true;
   if (raw.note_text) a.note_text = String(raw.note_text).trim();
   if (raw.phone) a.phone = String(raw.phone).trim();
   if (raw.email) a.email = String(raw.email).trim().toLowerCase();
