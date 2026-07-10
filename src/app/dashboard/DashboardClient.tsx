@@ -1029,16 +1029,13 @@ function ReminderForm({ clientId, labels: L }: { clientId: string; labels: Recor
   const ref = useRef<HTMLFormElement>(null);
   return (
     <form ref={ref} action={async (fd) => { await addReminderAction(fd); ref.current?.reset(); }} className="space-y-2">
-      <div className="flex gap-2">
-        <input type="hidden" name="clientId" value={clientId} />
-        <input
-          name="text"
-          aria-label={L.reminderTextPlaceholder}
-          placeholder={L.reminderTextPlaceholder}
-          className={`flex-1 rounded-lg border border-gray-200 px-3 ${TAP} text-sm focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand`}
-        />
-        <MiniSubmit label={L.addReminder} />
-      </div>
+      <input type="hidden" name="clientId" value={clientId} />
+      <input
+        name="text"
+        aria-label={L.reminderTextPlaceholder}
+        placeholder={L.reminderTextPlaceholder}
+        className={`w-full rounded-lg border border-gray-200 px-3 ${TAP} text-sm focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand`}
+      />
       <div className="flex items-center gap-2 pl-1">
         <span className="text-xs font-medium text-gray-500">{L.whenLabel}</span>
         <input type="date" name="date" aria-label={L.whenLabel}
@@ -1046,6 +1043,7 @@ function ReminderForm({ clientId, labels: L }: { clientId: string; labels: Recor
         <input type="time" name="time" defaultValue="09:00"
           className={`${TAP} rounded-lg border border-gray-200 px-2 text-sm text-gray-700 focus:border-brand focus:outline-none`} />
       </div>
+      <MiniSubmit label={L.addReminder} full />
     </form>
   );
 }
@@ -1069,10 +1067,10 @@ function DeletableRow({ left, right, sub, action, idName, id, deleteTitle, confi
     </div>
   );
 }
-function MiniSubmit({ label }: { label: string }) {
+function MiniSubmit({ label, full }: { label: string; full?: boolean }) {
   const { pending } = useFormStatus();
   return (
-    <button disabled={pending} className={`shrink-0 rounded-lg bg-brand px-3 ${TAP} min-w-[44px] text-sm font-medium text-white hover:bg-brand-dark disabled:opacity-60`}>
+    <button disabled={pending} className={`shrink-0 rounded-lg bg-brand px-3 ${TAP} min-w-[44px] text-sm font-medium text-white hover:bg-brand-dark disabled:opacity-60 ${full ? "w-full" : ""}`}>
       <Pending>{label}</Pending>
     </button>
   );
