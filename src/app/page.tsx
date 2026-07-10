@@ -57,9 +57,9 @@ export default function Home() {
         </div>
         <h2 className="mt-3 text-2xl font-bold tracking-tight text-gray-900">It chases every quote for you.</h2>
         <p className="mt-2 text-gray-600">
-          Send a quote and FieldText remembers so you don&apos;t have to. Everyone gets a
-          <span className="font-semibold text-gray-900"> 4-touch follow-up</span>. It keeps checking in with you until
-          the job is won or the customer&apos;s out.
+          Send a quote and FieldText remembers so you don&apos;t have to. It nudges you to check back
+          <span className="font-semibold text-gray-900"> four times over about two weeks</span> until the job is won or
+          the customer says no, so nothing slips through.
         </p>
       </section>
 

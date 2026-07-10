@@ -6,14 +6,33 @@ import type { LucideIcon } from "lucide-react";
  * the icon is absolutely centered on the body's center (44 viewBox, body center
  * ≈ 39% down), so it lands dead-center above the tail. Bubble is `text-brand`.
  */
-export function IconBubble({ Icon, className, iconClassName }: { Icon: LucideIcon; className?: string; iconClassName?: string }) {
+export function IconBubble({
+  Icon,
+  className,
+  iconClassName,
+  cx = "50%",
+  cy = "39%",
+  size = "46%",
+}: {
+  Icon: LucideIcon;
+  className?: string;
+  iconClassName?: string;
+  /** Optical center of the icon on the bubble body. Some glyphs (the Send
+   *  paper plane, whose mass sits lower-left) need a nudge to read as centered. */
+  cx?: string;
+  cy?: string;
+  size?: string;
+}) {
   return (
     <span className={`relative inline-block text-brand ${className ?? ""}`}>
       <svg viewBox="0 0 44 44" className="h-full w-full" aria-hidden="true">
         <rect x="3" y="3" width="38" height="30" rx="9" fill="currentColor" />
         <path d="M12 33 L12 41 L21 33 Z" fill="currentColor" />
       </svg>
-      <Icon className={`absolute left-1/2 top-[39%] h-[46%] w-[46%] -translate-x-1/2 -translate-y-1/2 text-white ${iconClassName ?? ""}`} />
+      <Icon
+        style={{ left: cx, top: cy, width: size, height: size }}
+        className={`absolute -translate-x-1/2 -translate-y-1/2 text-white ${iconClassName ?? ""}`}
+      />
     </span>
   );
 }
