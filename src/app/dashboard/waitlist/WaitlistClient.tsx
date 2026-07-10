@@ -36,10 +36,6 @@ const BADGE: Record<string, string> = {
 };
 
 export default function WaitlistClient({ leads }: { leads: Lead[] }) {
-  const [filter, setFilter] = useState("all");
-  const counts = leads.reduce<Record<string, number>>((a, l) => ((a[l.status] = (a[l.status] ?? 0) + 1), a), {});
-  const shown = filter === "all" ? leads : leads.filter((l) => l.status === filter);
-
   return (
     <main className="mx-auto max-w-2xl space-y-6 px-4 py-8 sm:px-6">
       <header className="flex items-center gap-3">
@@ -49,7 +45,19 @@ export default function WaitlistClient({ leads }: { leads: Lead[] }) {
           <p className="text-sm text-gray-500">Everyone who signed up. Pick who to invite, then onboard them under Operators.</p>
         </div>
       </header>
+      <WaitlistPanel leads={leads} />
+    </main>
+  );
+}
 
+/** The filter tabs + lead cards, with no page chrome — embeddable in HQ. */
+export function WaitlistPanel({ leads }: { leads: Lead[] }) {
+  const [filter, setFilter] = useState("all");
+  const counts = leads.reduce<Record<string, number>>((a, l) => ((a[l.status] = (a[l.status] ?? 0) + 1), a), {});
+  const shown = filter === "all" ? leads : leads.filter((l) => l.status === filter);
+
+  return (
+    <div className="space-y-4">
       {/* Filter tabs */}
       <div className="flex flex-wrap gap-2">
         {FILTERS.map((f) => {
@@ -78,7 +86,7 @@ export default function WaitlistClient({ leads }: { leads: Lead[] }) {
           ))}
         </div>
       )}
-    </main>
+    </div>
   );
 }
 

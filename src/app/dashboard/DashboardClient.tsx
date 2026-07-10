@@ -8,7 +8,7 @@ import {
   FileText, UserCheck, Briefcase, DollarSign, Bell, MessageCircle, Languages,
   CalendarClock, Search, X, Check, Clock, Ban, Upload, Sun, TrendingUp, AlertCircle,
   Download, Loader2, ChevronRight, ChevronLeft, Phone, PauseCircle, Pencil, Users,
-  CalendarDays, MapPin, HelpCircle, ClipboardList, Wallet,
+  CalendarDays, MapPin, HelpCircle, ClipboardList, Wallet, LayoutDashboard,
 } from "lucide-react";
 import { Logo } from "@/app/Logo";
 import type { ClientStatus, Lang } from "@/lib/types";
@@ -222,6 +222,9 @@ export default function DashboardClient(props: Props) {
           </Link>
           {props.admin && (
             <>
+              <Link href="/dashboard/hq" title="HQ" aria-label="HQ" className={`flex ${TAP} min-w-[44px] items-center justify-center rounded-lg border border-brand/40 bg-brand/5 px-2.5 text-brand-dark hover:bg-brand/10`}>
+                <LayoutDashboard className="h-4 w-4" />
+              </Link>
               <Link href="/dashboard/costs" title="Costs" aria-label="Costs" className={`flex ${TAP} min-w-[44px] items-center justify-center rounded-lg border border-gray-300 px-2.5 text-gray-600 hover:bg-gray-100`}>
                 <Wallet className="h-4 w-4" />
               </Link>

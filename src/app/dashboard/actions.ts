@@ -42,7 +42,8 @@ export async function login(formData: FormData) {
   const masterLocked = await throttleStatus("admin-master");
   if (masterLocked === 0 && safeEqual(password, config.dashboardPassword())) {
     cookies().set(AUTH_COOKIE, await signSession("admin"), COOKIE_OPTS);
-    redirect(dest);
+    // Founder lands on the HQ command center (unless a specific page was requested).
+    redirect(next && next !== "/dashboard" ? dest : "/dashboard/hq");
   }
 
   // Operator: their PHONE NUMBER is the username, matched to their business.
