@@ -128,9 +128,9 @@ const CHECKLIST: { title: string; detail: string; done: boolean }[] = [
   { title: "Twilio spend guardrails", done: true, detail: "Done — auto-recharge on (balance can't hit $0 and stop texts) plus a $60/month usage-trigger email alert." },
   { title: "Beta waitlist table live", done: true, detail: "Done — migrations 0015 (waitlist) and 0016 (email) run; beta signups save, capture email, and appear in HQ → Beta waitlist." },
   { title: "Anthropic monthly spend limit", done: true, detail: "Done — monthly cap + alerts set in the Anthropic console. Hard ceiling against a runaway; real usage is pennies." },
+  { title: "SESSION_SIGNING_SECRET in Vercel", done: true, detail: "Done — dedicated signing secret set. Sessions are signed with it and expire in 30 days. (Confirm a redeploy applied it — env changes need one.)" },
+  { title: "FOUNDER_ALERT_PHONE set", done: true, detail: "Done — your cell is set, so lockouts, signup floods, cron errors, message caps, and new signups all text you." },
   // ⬜ Still to do
-  { title: "Add SESSION_SIGNING_SECRET to Vercel", done: false, detail: "Settings → Environment Variables → any long random string → Redeploy. Note: everyone (you included) gets logged out once and signs back in." },
-  { title: "Set FOUNDER_ALERT_PHONE", done: false, detail: "Your cell in E.164 (+1971…). Lockouts, signup floods, cron errors, message caps, and new signups all text you there." },
   { title: "Confirm migrations 0013 + 0014 ran", done: false, detail: "0015 and 0016 (waitlist) are confirmed. Verify 0013 (beta hardening) and 0014 (client-linked expenses) were each run in Supabase." },
   { title: "Confirm the weekly backup cron", done: false, detail: "Vercel → Settings → Cron Jobs should show /api/cron/backup (Sundays). Hobby allows exactly 2 crons." },
   { title: "Decide the Netlify site's fate", done: false, detail: "Redirect fieldtext.netlify.app to fieldtextapp.com, or take it down. Right now it can swallow leads into a void." },
@@ -138,7 +138,7 @@ const CHECKLIST: { title: string; detail: string; done: boolean }[] = [
 ];
 
 const SCORES: { area: string; grade: string; color: string; note: string }[] = [
-  { area: "Security", grade: "A-", color: "text-brand-dark", note: "Hashed passwords, signed expiring sessions, throttles + alerts, tenant isolation verified; new admin pages all gated. Remaining: the two env vars on the checklist." },
+  { area: "Security", grade: "A", color: "text-brand-dark", note: "Dedicated session secret + expiry, hashed passwords, throttles + founder alerts wired, tenant isolation verified, new admin pages all gated. Confirm the redeploy that applies the env vars." },
   { area: "Money accuracy", grade: "A-", color: "text-brand-dark", note: "One ledger, both entry paths settle identically, billing anchors tested. Watch first real cycles in beta." },
   { area: "Reliability", grade: "A-", color: "text-brand-dark", note: "Confirmed July 10: cron pinger live (reminders fire on time), UptimeRobot watching app + DB, Twilio auto-recharge + spend alert on. Live cost/uptime/delivery tracking on HQ. Backup cron still to confirm." },
   { area: "Beta readiness", grade: "A-", color: "text-brand-dark", note: "Cleared for testers. Signup funnel verified end to end. What's left is the short checklist below — a migration, an env var or two, and the Anthropic cap." },
