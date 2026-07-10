@@ -11,8 +11,9 @@ export function IconBubble({
   className,
   iconClassName,
   cx = "50%",
-  cy = "39%",
+  cy,
   size = "46%",
+  tail = true,
 }: {
   Icon: LucideIcon;
   className?: string;
@@ -22,15 +23,25 @@ export function IconBubble({
   cx?: string;
   cy?: string;
   size?: string;
+  /** With tail = a speech bubble (matches the logo). Without = a clean rounded
+   *  square, better for a functional button like Send where a tail reads as a glitch. */
+  tail?: boolean;
 }) {
+  const top = cy ?? (tail ? "39%" : "50%");
   return (
     <span className={`relative inline-block text-brand ${className ?? ""}`}>
       <svg viewBox="0 0 44 44" className="h-full w-full" aria-hidden="true">
-        <rect x="3" y="3" width="38" height="30" rx="9" fill="currentColor" />
-        <path d="M12 33 L12 41 L21 33 Z" fill="currentColor" />
+        {tail ? (
+          <>
+            <rect x="3" y="3" width="38" height="30" rx="9" fill="currentColor" />
+            <path d="M12 33 L12 41 L21 33 Z" fill="currentColor" />
+          </>
+        ) : (
+          <rect x="4" y="4" width="36" height="36" rx="10" fill="currentColor" />
+        )}
       </svg>
       <Icon
-        style={{ left: cx, top: cy, width: size, height: size }}
+        style={{ left: cx, top, width: size, height: size }}
         className={`absolute -translate-x-1/2 -translate-y-1/2 text-white ${iconClassName ?? ""}`}
       />
     </span>
