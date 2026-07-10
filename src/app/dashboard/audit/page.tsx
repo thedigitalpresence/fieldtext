@@ -131,7 +131,7 @@ const CHECKLIST: { title: string; detail: string; done: boolean }[] = [
   { title: "SESSION_SIGNING_SECRET in Vercel", done: true, detail: "Done — dedicated signing secret set. Sessions are signed with it and expire in 30 days. (Confirm a redeploy applied it — env changes need one.)" },
   { title: "FOUNDER_ALERT_PHONE set", done: true, detail: "Done — your cell is set, so lockouts, signup floods, cron errors, message caps, and new signups all text you." },
   // ⬜ Still to do
-  { title: "Confirm migrations 0013 + 0014 ran", done: false, detail: "0015 and 0016 (waitlist) are confirmed. Verify 0013 (beta hardening) and 0014 (client-linked expenses) were each run in Supabase." },
+  { title: "All Supabase migrations run", done: true, detail: "Done — 0013 (beta hardening), 0014 (client-linked expenses), 0015 (waitlist), and 0016 (waitlist email) are all applied." },
   { title: "Confirm the weekly backup cron", done: false, detail: "Vercel → Settings → Cron Jobs should show /api/cron/backup (Sundays). Hobby allows exactly 2 crons." },
   { title: "Netlify site redirected", done: true, detail: "Done — fieldtext.netlify.app now 301-redirects every path to fieldtextapp.com (drag-and-drop _redirects deploy). No more leads into a void." },
   { title: "A2P opt-in URL current?", done: false, detail: "Your Twilio campaign should point at https://fieldtextapp.com/signup as the opt-in proof. If it still shows the old Netlify URL, update it." },
