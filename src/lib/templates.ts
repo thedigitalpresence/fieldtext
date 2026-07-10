@@ -244,4 +244,8 @@ export const t = {
     lang === "es"
       ? `¿Te refieres a ${candidate}? Responde SÍ — o NUEVO para agregar "${given}" como cliente nuevo.`
       : `Did you mean ${candidate}? Reply YES — or NEW to add "${given}" as a new client.`,
+  reAddRemoved: (candidate: string, given: string, lang: Lang) =>
+    lang === "es"
+      ? `${candidate} fue quitado antes. ¿Volver a agregarlo? Responde SÍ — o NUEVO para crear a "${given}" aparte.`
+      : `${candidate} was removed earlier. Add them back? Reply YES — or NEW to create "${given}" as a separate client.`,
 };

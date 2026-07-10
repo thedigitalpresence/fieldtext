@@ -123,6 +123,34 @@ test("G1: same LAST name still confirms (Eric vs Elena Shackelford)", async () =
   assert.equal(eric!.status, "active");
 });
 
+test("G1: a short first-name fragment NEVER silently attaches ('elen' ≠ Elena Shackelford)", async () => {
+  await reset([{ name: "Elena Shackelford", address: "9 Pine Rd" }]);
+  const reply = await say("send elen a quote");
+  // Must not silently assume Elena — either confirm or create the new prospect "Elen".
+  assert.doesNotMatch(reply, /^(Quoted|Added Elena|Saved ✅ Elena|Cotiz)/i, `must not assume Elena → "${reply}"`);
+  if (/did you mean|te refieres/i.test(reply)) {
+    // Confirm path: NEW creates the fresh prospect, capitalized.
+    const created = await say("new");
+    assert.match(created, /Elen\b/, `new prospect named Elen (capitalized) → "${created}"`);
+  }
+  // Exact-name lookup (the fuzzy helper would match Elena) — proves "Elen" exists and is title-cased.
+  const { data: rows } = await db().from("clients").select("*");
+  const elen = (rows as { name: string }[]).find((c) => c.name === "Elen");
+  assert.ok(elen, "a distinct 'Elen' prospect was created, capitalized");
+  const elena = (rows as { name: string; status: string }[]).find((c) => c.name === "Elena Shackelford");
+  assert.equal(elena!.status, "active", "Elena stays as she was — the quote didn't attach to her");
+});
+
+test("G1: a REMOVED client is never silently resurrected by a new quote", async () => {
+  await reset([{ name: "Elena Shackelford", address: "9 Pine Rd" }]);
+  await say("done with Elena Shackelford for good"); // remove her
+  assert.equal((await getClient("Elena Shackelford"))!.status, "completed");
+  const reply = await say("send Elena Shackelford a quote");
+  assert.match(reply, /removed|quitad|add.*back|did you mean|volver/i, `should confirm re-adding, not assume → "${reply}"`);
+  // Still removed until confirmed.
+  assert.equal((await getClient("Elena Shackelford"))!.status, "completed", "not silently reactivated");
+});
+
 test("G1: exact and typo'd full names attach silently (no nagging)", async () => {
   await convo("G1 exact", FIRSTNAME_BOOK, [
     { send: "collected 200 from eric shackelford", expect: [/Recorded ✅ \$200 from Eric Shackelford/], reject: [/did you mean/i] },

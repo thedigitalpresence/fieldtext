@@ -122,11 +122,19 @@ function score(c: Client, qName: string, qAddr: string): number {
   if (qName) {
     const cName = norm(c.name);
     let nameScore = 0;
+    const qT = nameTokens(qName);
+    const cT = nameTokens(cName);
+    // A short prefix of the FIRST name of a full (first + last) name is NOT a
+    // strong match — "elen" must not silently become "Elena Shackelford". It
+    // falls through to typo logic and confirms first. ("taylor" → "the taylors"
+    // stays strong: that name is a single identity token, not first+last.)
+    const firstNameFragment =
+      cT.length >= 2 && qT.length <= 1 && !qName.includes(" ") &&
+      qName.length < cT[0].length && cT[0].startsWith(qName);
     if (cName === qName) nameScore = 5;
-    else if (cName.includes(qName) || qName.includes(cName)) nameScore = 3;
+    else if (qName.includes(cName)) nameScore = 3; // query contains the whole client name
+    else if (cName.includes(qName) && !firstNameFragment) nameScore = 3;
     else {
-      const qT = nameTokens(qName);
-      const cT = nameTokens(cName);
 
       if (qT.length >= 2 && cT.length >= 2) {
         // Both are FULL names: identity lives in the LAST name. Different last

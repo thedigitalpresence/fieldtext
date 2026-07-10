@@ -522,6 +522,12 @@ async function logQuote(business: Business, p: ParsedAction, ctx: ParseContext, 
       session.pending = { kind: "confirm_match", action: p, candidateIds: [matches[0].client.id], expiresAt: pendingExpiry() };
       return t.didYouMean(matches[0].client.name, p.client_name, lang);
     }
+    // Never silently resurrect a REMOVED client. If the only match was removed
+    // (completed/lost), confirm bringing them back rather than assuming it's them.
+    if (matches.length === 1 && p.client_name && (matches[0].client.status === "completed" || matches[0].client.status === "lost")) {
+      session.pending = { kind: "confirm_match", action: p, candidateIds: [matches[0].client.id], expiresAt: pendingExpiry() };
+      return t.reAddRemoved(matches[0].client.name, p.client_name, lang);
+    }
     client = matches[0]?.client ?? null;
   }
 

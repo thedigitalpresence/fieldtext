@@ -340,7 +340,11 @@ function parseClause(text: string, _ctx: ParseContext): Record<string, any> | nu
   // "(need to) send/prep/write a quote for/to <Name>" — a prospect to be quoted
   // LATER (no amount yet). Create them so their contact info gets collected and
   // the conversation stays open; the amount comes when the quote is actually sent.
-  const toQuoteM = t.match(/\b(?:send|sending|prep(?:are)?|write|writing|do|doing|make|making|get|give)\s+(?:out\s+)?(?:a\s+|the\s+)?quote\s+(?:for|to)\s+(?:the |los |las |el |la |a )?([a-zà-ÿ][a-zà-ÿ .'’-]+)/i);
+  const toQuoteM =
+    // "send/prep a quote for/to <Name>"
+    t.match(/\b(?:send|sending|prep(?:are)?|write|writing|do|doing|make|making|get)\s+(?:out\s+)?(?:a\s+|the\s+)?quote\s+(?:for|to)\s+(?:the |los |las |el |la |a )?([a-zà-ÿ][a-zà-ÿ .'’-]+)/i)
+    // "send/give <Name> a quote" (name-first word order)
+    || t.match(/\b(?:send|give|get)\s+(?:the |los |las |el |la )?([a-zà-ÿ][a-zà-ÿ .'’-]+?)\s+(?:a\s+|the\s+|an\s+)?quote\b/i);
   const hasAmount = /\$\s?\d|\b\d+\s*(?:a |per |al |por |\/)?\s*(?:months?|weeks?|mo|wk|mes|semanas?|sem)\b/i.test(lower);
   if (toQuoteM && !hasAmount) {
     // Trim a trailing time phrase off the name ("...for Jane tomorrow").
