@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Leaf, Check } from "lucide-react";
+import { Leaf, Check, Repeat } from "lucide-react";
 import DemoWidget from "./DemoWidget";
 
 export const metadata = { title: "FieldText: Run your business by text" };
@@ -9,7 +9,7 @@ const FEATURES = [
   "Text one number in plain language, English or Spanish",
   "Log quotes, jobs, and payments as they happen",
   "Keep notes and photos on every client (gate codes, dogs, before and after pics)",
-  "Set reminders and get automatic follow-ups so nothing slips through",
+  "A built-in 4-touch follow-up on every quote, so none go cold",
   "Ask it anything, like \"who owes me?\" or \"what's Monday look like?\"",
   "It tracks who owes you and makes invoices you can forward to get paid",
   "Bring your whole client list by paste, spreadsheet, or a photo of your notebook",
@@ -48,6 +48,22 @@ export default function Home() {
           </Link>
         </div>
       </div>
+
+      {/* Marquee feature — the follow-up close loop */}
+      <section className="w-full max-w-lg rounded-2xl border border-brand/25 bg-brand/5 p-6 text-left shadow-sm">
+        <div className="flex items-center gap-2">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand text-white"><Repeat className="h-5 w-5" /></span>
+          <p className="text-xs font-bold uppercase tracking-widest text-brand-dark">Never let a quote go cold</p>
+        </div>
+        <h2 className="mt-3 text-2xl font-bold tracking-tight text-gray-900">It chases every quote for you.</h2>
+        <p className="mt-2 text-gray-600">
+          Send a quote and FieldText remembers so you don&apos;t have to. Every one gets a
+          <span className="font-semibold text-gray-900"> 4-touch follow-up</span> — it keeps checking in with you until
+          the job is won or the customer&apos;s out. You just reply <span className="font-semibold">IN</span>,{" "}
+          <span className="font-semibold">OUT</span>, or &quot;no reply yet&quot; and it handles the rest.
+        </p>
+        <p className="mt-3 text-sm font-medium text-brand-dark">No sticky notes. No quotes slipping through. No money left on the table.</p>
+      </section>
 
       {/* Demo */}
       <DemoWidget />

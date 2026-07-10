@@ -432,10 +432,10 @@ test("G8: an oddly formatted / international number still attaches", async () =>
 });
 
 // ── G10: quote close-loop — nudge reply drives won / lost / keep-chasing ──────
-async function armQuoteStatus(clientId: string) {
+async function armQuoteStatus(clientId: unknown) {
   const expiresAt = new Date(Date.now() + 18 * 3600 * 1000).toISOString();
   await db().from("authorized_phones")
-    .update({ pending_state: { kind: "quote_status", action: { intent: "update_status", confidence: 1, client_id: clientId }, expiresAt } })
+    .update({ pending_state: { kind: "quote_status", action: { intent: "update_status", confidence: 1, client_id: String(clientId) }, expiresAt } })
     .eq("phone", "+15550001111");
 }
 
