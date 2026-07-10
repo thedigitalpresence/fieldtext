@@ -431,6 +431,36 @@ test("G8: an oddly formatted / international number still attaches", async () =>
   assert.ok(!/number|her/i.test(String(row!.service_description ?? "")), "filler didn't leak into service");
 });
 
+// ── G8c: a photo mid-intake attaches to the client in focus (context kept) ────
+async function sayPhoto(body: string): Promise<string> {
+  SID++;
+  const out = await handleInbound({
+    from: "+15550001111", to: "+19995550000", body, messageSid: `SMmid${SID}`, numMedia: 1,
+    media: [{ url: "https://api.twilio.com/fake/Media/MEmid", contentType: "image/jpeg" }],
+  });
+  const m = out.twiml.match(/<Message>([\s\S]*?)<\/Message>/);
+  return m ? m[1] : "";
+}
+
+test("G8c: a photo sent DURING intake attaches to that client, not 'whose site?'", async () => {
+  await reset([]);
+  await say("quoted Jorge Vela for $200 full lawn"); // one-time price → no schedule step
+  // Give address + phone together so we advance straight to the notes/photo step.
+  const notesAsk = await say("100 Pine St 5551234567");
+  assert.match(notesAsk, /note about Jorge|photo of the site/i, `at the notes step → "${notesAsk}"`);
+  // Now text a photo — it must attach to Jorge, NOT reset to "whose site is this?".
+  const photoReply = await sayPhoto("");
+  assert.doesNotMatch(photoReply, /whose site|IMPORT/i, `photo must not lose context → "${photoReply}"`);
+  assert.match(photoReply, /Jorge/i, `photo saved to Jorge → "${photoReply}"`);
+  // And the intake is STILL open — the next text is the note.
+  const noteReply = await say("annoying dog");
+  assert.match(noteReply, /Note saved|noted/i, `note still lands → "${noteReply}"`);
+  const jorge = await getClient("Jorge Vela");
+  assert.match(String(jorge!.notes), /annoying dog/i, "note saved to Jorge");
+  const { data: atts } = await db().from("attachments").select("*");
+  assert.equal((atts as { client_id: string }[]).filter((a) => a.client_id === jorge!.id).length, 1, "photo linked to Jorge");
+});
+
 // ── G9: expenses can be tied to a client and confirmed ────────────────────────
 test("G9: 'spent 100 on mulch for Elena' ties the expense to Elena and confirms it", async () => {
   await reset([{ name: "Elena Shackelford", address: "9 Pine Rd" }]);

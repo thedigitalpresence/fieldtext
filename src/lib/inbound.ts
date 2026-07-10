@@ -126,7 +126,20 @@ export async function handleInbound(params: InboundParams): Promise<InboundOutco
   if ((params.numMedia ?? 0) > 0 && media.length > 0) {
     const inId = await logMessage({ businessId: business.id, direction: "inbound", fromPhone: fromE164, body: body || "(photo)", intent: "photo", externalId: params.messageSid });
     await logSms(business, { direction: "inbound", body: body || "(photo)", messageId: inId });
-    const reply = await handlePhoto(business, authPhone.id, media, body, lang);
+    // If we're mid-conversation about a specific client (an intake in progress),
+    // the photo is THEIRS — attach it and keep the intake going, instead of
+    // resetting to "whose site is this?". This is the blanket context fix.
+    const focusId = focusedClientId(authPhone.pending_state as PendingState | null);
+    let reply: string;
+    if (focusId) {
+      const saved = await saveMedia(business.id, focusId, media, body || null);
+      const c = (await listClients(business.id)).find((x) => x.id === focusId);
+      reply = saved > 0 && c ? t.photoSaved(saved, c.name, lang) : t.errorSaving(lang);
+      // pending_state is intentionally LEFT INTACT — the intake question still
+      // stands, so the operator's next text ("gate code 1187") still answers it.
+    } else {
+      reply = await handlePhoto(business, authPhone.id, media, body, lang);
+    }
     const outId = await logMessage({ businessId: business.id, direction: "outbound", body: reply });
     await logSms(business, { direction: "outbound", body: reply, messageId: outId });
     return { twiml: replyTwiml(reply), authorized: true };
@@ -214,6 +227,21 @@ export async function handleInbound(params: InboundParams): Promise<InboundOutco
   const outboundId = await logMessage({ businessId: business.id, direction: "outbound", body: reply });
   await logSms(business, { direction: "outbound", body: reply, messageId: outboundId });
   return { twiml: replyTwiml(reply), authorized: true };
+}
+
+/**
+ * The client we're already in a conversation about, if any — the intake being
+ * completed or the client whose price we just asked for. A photo (or any
+ * follow-up) that lands mid-conversation belongs to THEM. Null for questions
+ * where the client isn't pinned down yet (which_client / confirm_* / expired).
+ */
+function focusedClientId(pending: PendingState | null): string | null {
+  if (!pending) return null;
+  if (new Date(pending.expiresAt).getTime() < Date.now()) return null;
+  if (pending.kind === "complete_client" || pending.kind === "missing_amount") {
+    return pending.action?.client_id ?? null;
+  }
+  return null;
 }
 
 /**
