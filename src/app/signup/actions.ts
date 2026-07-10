@@ -34,6 +34,7 @@ export async function submitWaitlist(_prev: WaitlistResult | null, formData: For
   const business = String(formData.get("business") ?? "").trim().slice(0, 200);
   const phoneRaw = String(formData.get("phone") ?? "").trim().slice(0, 40);
   const trade = String(formData.get("trade") ?? "").trim().slice(0, 200);
+  const email = String(formData.get("email") ?? "").trim().slice(0, 200);
   const needs = String(formData.get("needs") ?? "").trim().slice(0, 1000);
   const language = String(formData.get("language")) === "es" ? "es" : "en";
   const TIMEZONES = [
@@ -60,7 +61,7 @@ export async function submitWaitlist(_prev: WaitlistResult | null, formData: For
   // One lead per phone: update the existing row instead of stacking duplicates.
   const { data: prior } = await db().from("waitlist").select("id, status").eq("phone", phone).maybeSingle();
   const row = {
-    name, business_name: business || null, phone, trade, needs: needs || null,
+    name, business_name: business || null, phone, email: email || null, trade, needs: needs || null,
     language, timezone,
     consent_text: CONSENT_TEXT,
     consented_at: new Date().toISOString(),

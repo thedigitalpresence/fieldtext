@@ -7,6 +7,7 @@ type Row = {
   name: string;
   business_name: string | null;
   phone: string;
+  email: string | null;
   trade: string | null;
   needs: string | null;
   language: string;
@@ -35,7 +36,7 @@ function fmtPhone(e164: string): string {
 export async function loadWaitlistLeads(): Promise<Lead[]> {
   const { data } = await db()
     .from("waitlist")
-    .select("id, created_at, name, business_name, phone, trade, needs, language, timezone, status, notes")
+    .select("id, created_at, name, business_name, phone, email, trade, needs, language, timezone, status, notes")
     .order("created_at", { ascending: false });
 
   return ((data ?? []) as Row[]).map((r) => ({
@@ -45,6 +46,7 @@ export async function loadWaitlistLeads(): Promise<Lead[]> {
     business: r.business_name,
     phone: fmtPhone(r.phone),
     rawPhone: r.phone,
+    email: r.email,
     trade: r.trade,
     needs: r.needs,
     lang: r.language === "es" ? "ES" : "EN",

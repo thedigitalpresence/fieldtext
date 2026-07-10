@@ -47,6 +47,7 @@ export default function SignupPage() {
           <Field label="Your name" name="name" type="text" required />
           <Field label="Business name" name="business" type="text" placeholder="Optional" />
           <Field label="Mobile number" name="phone" type="tel" required placeholder="(555) 123-4567" />
+          <Field label="Email" name="email" type="email" placeholder="Optional — so we can reach you" />
           <Field label="What do you do?" name="trade" type="text" required placeholder="Landscaper, handyman, cleaner…" />
           <div>
             <label className="mb-1 block text-sm font-medium" htmlFor="needs">What do you need it for?</label>
