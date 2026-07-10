@@ -94,6 +94,10 @@ export const t = {
     lang === "es"
       ? `Gasto ✅ ${amount} — ${desc || category}.`
       : `Expense ✅ ${amount} — ${desc || category}.`,
+  expenseLoggedFor: (amount: string, client: string, desc: string, lang: Lang) =>
+    lang === "es"
+      ? `Gasto ✅ ${amount} — ${desc} · guardado en la ficha de ${client}.`
+      : `Expense ✅ ${amount} — ${desc} · saved to ${client}'s card.`,
   infoSaved: (name: string, what: string, lang: Lang) =>
     lang === "es" ? `Guardado ✅ ${name} — ${what}.` : `Saved ✅ ${name} — ${what}.`,
   clientPaused: (name: string, until: string | null, lang: Lang) =>
@@ -157,8 +161,8 @@ export const t = {
   whenRemind: (lang: Lang) => (lang === "es" ? "¿Cuándo te recuerdo?" : "When should I remind you?"),
   didntCatch: (lang: Lang) =>
     lang === "es"
-      ? 'No entendí bien — prueba p. ej. "coticé a Jane en 5 Oak por $200/mes" o "recuérdame llamar a Jane el viernes". Escribe AYUDA para ver todo.'
-      : 'I didn\'t catch that — try e.g. "quoted Jane at 5 Oak St for $200/mo" or "remind me to call Jane friday". Text HELP for the full menu.',
+      ? 'No entendí bien — prueba p. ej. "coticé a Jane en 5 Oak por $200/mes" o "recuérdame llamar a Jane el viernes". Escribe AYUDA para ver todo, o escribe a eric@fieldtextapp.com.'
+      : 'I didn\'t catch that — try e.g. "quoted Jane at 5 Oak St for $200/mo" or "remind me to call Jane friday". Text HELP for the full menu, or reach us at eric@fieldtextapp.com.',
   errorSaving: (lang: Lang) =>
     lang === "es" ? "Algo salió mal al guardar. Intenta de nuevo." : "Something went wrong saving that. Try again.",
   helpHint: (lang: Lang) =>

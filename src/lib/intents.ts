@@ -81,7 +81,7 @@ async function runAction(
     case "set_reminder": return setReminder(business, p, sourceMessageId, lang);
     case "correction": return applyCorrection(business, p, lang);
     case "query": return runQuery(business, p, ctx);
-    case "log_expense": return logExpense(business, p, lang);
+    case "log_expense": return logExpense(business, p, session, lang);
     case "update_client_info": return updateClientInfo(business, p, session, lang);
     case "pause_client": return pauseClient(business, p, session, lang);
     case "resume_client": return resumeClient(business, p, session, lang);
@@ -814,15 +814,28 @@ async function applyCorrection(business: Business, p: ParsedAction, lang: Lang):
 }
 
 // ── New roadmap handlers ──────────────────────────────────────────────────────
-async function logExpense(business: Business, p: ParsedAction, lang: Lang): Promise<string> {
+async function logExpense(business: Business, p: ParsedAction, session: ActionSession, lang: Lang): Promise<string> {
   if (p.amount == null) return lang === "es" ? "¿De cuánto fue el gasto?" : "How much was the expense?";
   const today = todayInTz(business.timezone);
   const category = p.expense_category ?? "other";
   const description = p.note_text ?? p.job_description ?? null;
+
+  // "spent 100 on mulch for Elena" → tie it to Elena's card (per-client costing).
+  // Only when a client was named; a bad/ambiguous name asks rather than guessing.
+  let client: Client | null = null;
+  if (p.client_name || p.client_id) {
+    const r = await resolveClient(business, p, session, lang);
+    if (!r.client && r.ask) return r.ask; // ambiguous / not found → clarify, don't drop it
+    client = r.client;
+  }
+
   await db().from("expenses").insert({
-    business_id: business.id, amount: p.amount, category, description, spent_on: p.performed_on ?? today,
+    business_id: business.id, client_id: client?.id ?? null,
+    amount: p.amount, category, description, spent_on: p.performed_on ?? today,
   });
-  return t.expenseLogged(money(p.amount), category, description ?? "", lang);
+  return client
+    ? t.expenseLoggedFor(money(p.amount), client.name, description ?? category, lang)
+    : t.expenseLogged(money(p.amount), category, description ?? "", lang);
 }
 
 async function updateClientInfo(business: Business, p: ParsedAction, session: ActionSession, lang: Lang): Promise<string> {

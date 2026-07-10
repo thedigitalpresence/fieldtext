@@ -156,6 +156,7 @@ export interface Charge {
 export interface Expense {
   id: string;
   business_id: string;
+  client_id: string | null; // set when the expense was "for <client>" (per-client job costing)
   amount: number;
   category: string | null;
   description: string | null;

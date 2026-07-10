@@ -431,6 +431,28 @@ test("G8: an oddly formatted / international number still attaches", async () =>
   assert.ok(!/number|her/i.test(String(row!.service_description ?? "")), "filler didn't leak into service");
 });
 
+// ── G9: expenses can be tied to a client and confirmed ────────────────────────
+test("G9: 'spent 100 on mulch for Elena' ties the expense to Elena and confirms it", async () => {
+  await reset([{ name: "Elena Shackelford", address: "9 Pine Rd" }]);
+  const reply = await say("spent 100 on mulch for Elena");
+  assert.match(reply, /Expense ✅/i, `logs an expense → "${reply}"`);
+  assert.match(reply, /Elena/i, `confirms it's saved to Elena → "${reply}"`);
+  const { data: exps } = await db().from("expenses").select("*");
+  const e = (exps as { amount: number; client_id: string | null; description: string | null }[])[0];
+  assert.ok(e, "expense row exists");
+  assert.equal(Number(e.amount), 100);
+  const elena = await getClient("Elena Shackelford");
+  assert.equal(e.client_id, elena!.id, "linked to Elena's id, not orphaned");
+});
+
+test("G9: a general expense with no client stays unlinked", async () => {
+  await reset([{ name: "Bob Johnson", address: "3 Ash Ct" }]);
+  const reply = await say("spent 60 on fuel");
+  assert.match(reply, /Expense ✅/i);
+  const { data: exps } = await db().from("expenses").select("*");
+  assert.equal((exps as { client_id: string | null }[])[0].client_id ?? null, null, "overhead expense not tied to a client");
+});
+
 // ── G8b: dashboard link is answerable (not a menu dump, not a broken promise) ──
 test("G8b: asking for the dashboard link gives the actual URL", async () => {
   await reset([]);

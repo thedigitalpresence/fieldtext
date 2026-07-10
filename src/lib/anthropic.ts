@@ -123,7 +123,7 @@ function systemPrompt(ctx: ParseContext): string {
     ``,
     `Intents: log_quote, update_status, log_job, log_payment, set_reminder, query, correction (fixing the last record, e.g. "no it's 333 not 233"), help,`,
     `query = ANY question or request to see saved info — "who owes me?", "what's my monday route?", "elena's notes", "need her photos", "send me her pics", "what do I know about bob", "her address". Anything asking to SEE or KNOW something is a query (the answer step has the recent conversation, so it resolves "her"/"his"). Route these to query — NEVER to help or needs_clarification.`,
-    `log_expense ("spent 84 on mulch at home depot" -> amount + expense_category + description — money OUT, never log_payment),`,
+    `log_expense ("spent 84 on mulch at home depot" -> amount + expense_category + description — money OUT, never log_payment). If it's spent FOR a client ("spent 100 on mulch for Elena"), ALSO set client_name so it's saved to their card,`,
     `update_client_info ("angela's number is 555-0142" -> phone; "gate code 4412 at the smiths" -> note_text; "jones referred by bob" -> referred_by; "note for the wilsons: big backyard, steep slope, wants edging" -> note_text — site-visit notes BEFORE any quote are normal, the client may not exist yet),`,
     `pause_client ("hold jones til spring", "pause the smiths" -> pause_until if a date is given) / resume_client,`,
     `skip_visit ("skip the smiths this week" — one visit only, NOT a schedule change),`,
@@ -305,8 +305,13 @@ function parseClause(text: string, _ctx: ParseContext): Record<string, any> | nu
 
   // Expense — money OUT ("spent 84 on mulch", "gassed up the truck 65", "bought a blade 45")
   if (/\b(spent|gast[eé]|bought|compr[eé]|gassed up|gassed|filled up|fill up|fuel|paid the (?:supplier|dump|crew))\b/i.test(lower)) {
-    const desc = t.replace(/^.*?\b(?:spent|gast[eé]|bought|compr[eé]|gassed up|gassed|filled up|fill up|on)\b\s*/i, "").replace(/^\$?[\d.,]+\s*(?:on|en|de|for)?\s*/i, "");
-    return { intent: "log_expense", confidence: 0.6, amount: t, expense_category: t, note_text: desc };
+    // "...for Elena" ties the expense to a client. Peel it off before the description.
+    let body = t;
+    let client_name: string | undefined;
+    const forM = body.match(/\s+\bfor\s+(?:the |los |las |el |la )?([a-zà-ÿ][a-zà-ÿ .'’-]+?)\s*$/i);
+    if (forM) { client_name = cleanName(forM[1]); body = body.slice(0, forM.index).trim(); }
+    const desc = body.replace(/^.*?\b(?:spent|gast[eé]|bought|compr[eé]|gassed up|gassed|filled up|fill up|on)\b\s*/i, "").replace(/^\$?[\d.,]+\s*(?:on|en|de|for)?\s*/i, "");
+    return { intent: "log_expense", confidence: 0.6, amount: t, expense_category: t, note_text: desc, client_name };
   }
 
   // Site notes ("note for the wilsons: big backyard" — colon OR just a trailing phrase)

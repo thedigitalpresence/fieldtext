@@ -370,3 +370,7 @@ alter table password_resets enable row level security;
 -- person, killing signup-squatting.
 alter table signups add column if not exists activation_code text;
 alter table signups add column if not exists timezone text;
+
+-- 0014_expense_client_link.sql — tie expenses to a client (per-client job costing).
+alter table expenses add column if not exists client_id uuid references clients(id) on delete set null;
+create index if not exists expenses_client_idx on expenses (client_id);

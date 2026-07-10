@@ -332,6 +332,13 @@ export async function deleteJob(formData: FormData) {
   revalidatePath("/dashboard");
 }
 
+export async function deleteExpense(formData: FormData) {
+  const id = String(formData.get("expenseId"));
+  const b = await currentBusiness();
+  await db().from("expenses").delete().eq("id", id).eq("business_id", b.id);
+  revalidatePath("/dashboard");
+}
+
 /** Every open charge for a client (or the "unassigned" bucket). */
 async function openChargesFor(businessId: string, clientKey: string) {
   const { data } = await db().from("charges").select("*").eq("business_id", businessId).in("status", ["open", "partial"]);

@@ -75,7 +75,7 @@ export default async function DashboardPage({ searchParams }: { searchParams?: {
   const lang = businessLang(business);
   const d = dict(lang);
 
-  const [{ data: clientRows }, { data: jobRows }, { data: schedJobRows }, { data: payRows }, { data: remRows }, { data: msgRows }] =
+  const [{ data: clientRows }, { data: jobRows }, { data: schedJobRows }, { data: payRows }, { data: remRows }, { data: msgRows }, { data: expRows }] =
     await Promise.all([
       db().from("clients").select("*").eq("business_id", bid).order("updated_at", { ascending: false }),
       db().from("jobs").select("*").eq("business_id", bid).order("performed_on", { ascending: false }).limit(30),
@@ -83,12 +83,14 @@ export default async function DashboardPage({ searchParams }: { searchParams?: {
       db().from("payments").select("*").eq("business_id", bid).order("created_at", { ascending: false }).limit(30),
       db().from("reminders").select("*").eq("business_id", bid).eq("status", "pending").order("due_at", { ascending: true }),
       db().from("messages").select("*").eq("business_id", bid).eq("direction", "inbound").order("created_at", { ascending: false }).limit(30),
+      db().from("expenses").select("*").eq("business_id", bid).not("client_id", "is", null).order("spent_on", { ascending: false }).limit(60),
     ]);
 
   const clients = (clientRows ?? []) as Client[];
   const jobs = (jobRows ?? []) as Job[];
   const schedJobs = (schedJobRows ?? []) as Job[];
   const payments = (payRows ?? []) as Payment[];
+  const clientExpenses = (expRows ?? []) as import("@/lib/types").Expense[];
   const reminders = (remRows ?? []) as Reminder[];
   const messages = (msgRows ?? []) as Message[];
   const nameOf = (id: string | null) => clients.find((c) => c.id === id)?.name ?? "—";
@@ -279,6 +281,7 @@ export default async function DashboardPage({ searchParams }: { searchParams?: {
 
   const jobViews = jobs.map((j) => ({ id: j.id, clientId: j.client_id, description: j.description, dateStr: fmtShort(j.performed_on, lang), who: j.client_id ? nameOf(j.client_id) : null }));
   const payViews = payments.map((p) => ({ id: p.id, clientId: p.client_id, amountStr: money(p.amount), dateStr: fmtShort(p.paid_on ?? p.created_at, lang), who: p.client_id ? nameOf(p.client_id) : null, status: p.status ?? "paid" }));
+  const expenseViews = clientExpenses.map((e) => ({ id: e.id, clientId: e.client_id, amountStr: money(e.amount), dateStr: fmtShort(e.spent_on, lang), label: e.description || e.category || "expense" }));
   // Reminders show date AND time (manual ones can now be scheduled to the minute).
   const reminderViews = reminders.map((r) => ({
     id: r.id, clientId: r.client_id, text: r.text,
@@ -320,7 +323,7 @@ export default async function DashboardPage({ searchParams }: { searchParams?: {
     howOften: d.howOften, dayLabel: d.dayLabel, whenLabel: d.whenLabel,
     intervalNone: d.intervalNone, intervalWeekly: d.intervalWeekly,
     intervalBiweekly: d.intervalBiweekly, intervalMonthly: d.intervalMonthly,
-    confirmDeleteEntry: d.confirmDeleteEntry, periodOneTime: d.periodOneTime,
+    confirmDeleteEntry: d.confirmDeleteEntry, periodOneTime: d.periodOneTime, expenses: d.expenses,
     exportCsv: d.exportCsv, phoneLabel: d.phoneLabel, emailLabel: d.emailLabel,
     pausedUntil: d.pausedUntil, pausedGroup: d.pausedGroup, confirmDecline: d.confirmDecline,
     photos: d.photos,
@@ -355,6 +358,7 @@ export default async function DashboardPage({ searchParams }: { searchParams?: {
       activity={activity}
       jobs={jobViews}
       payments={payViews}
+      expenses={expenseViews}
       reminders={reminderViews}
     />
   );

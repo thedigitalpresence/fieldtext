@@ -154,6 +154,7 @@ const en = {
   intervalMonthly: "Monthly",
   confirmDeleteEntry: "Delete this entry?",
   periodOneTime: "One-time",
+  expenses: "Expenses",
 };
 
 const es: Dict = {
@@ -292,6 +293,7 @@ const es: Dict = {
   intervalMonthly: "Mensual",
   confirmDeleteEntry: "¿Borrar esta entrada?",
   periodOneTime: "Única vez",
+  expenses: "Gastos",
 };
 
 const DICTS: Record<Lang, Dict> = { en, es };

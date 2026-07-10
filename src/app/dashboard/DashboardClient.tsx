@@ -13,7 +13,7 @@ import {
 import type { ClientStatus, Lang } from "@/lib/types";
 import {
   logout, setLanguage, markStatus, addNote, addReminderAction, logPayment, reminderAction,
-  editClient, settleBalance, voidBalance, switchBusiness, setCity, deletePayment, deleteJob,
+  editClient, settleBalance, voidBalance, switchBusiness, setCity, deletePayment, deleteJob, deleteExpense,
 } from "./actions";
 
 const STATUS_COLOR: Record<ClientStatus, string> = {
@@ -46,6 +46,7 @@ type Activity = { id: string; kind: string; text: string; rel: string; exact: st
 type JobView = { id: string; clientId: string | null; description: string; dateStr: string; who: string | null };
 type PayView = { id: string; clientId: string | null; amountStr: string; dateStr: string; who: string | null; status: string };
 type RemView = { id: string; clientId: string | null; text: string; dateStr: string; kind: string };
+type ExpenseView = { id: string; clientId: string | null; amountStr: string; dateStr: string; label: string };
 type DayView = {
   date: string; isToday: boolean; weekdayStr: string; dateShort: string;
   weather: { emoji: string; label: string; hi: number; lo: number; precip: number | null } | null;
@@ -70,6 +71,7 @@ interface Props {
   jobs: JobView[];
   payments: PayView[];
   reminders: RemView[];
+  expenses: ExpenseView[];
 }
 
 const TAP = "min-h-[44px]";
@@ -510,6 +512,7 @@ export default function DashboardClient(props: Props) {
           jobs={props.jobs.filter((j) => j.clientId === selected.id)}
           payments={props.payments.filter((p) => p.clientId === selected.id)}
           reminders={props.reminders.filter((r) => r.clientId === selected.id)}
+          expenses={props.expenses.filter((e) => e.clientId === selected.id)}
           photos={props.photos.filter((p) => p.clientId === selected.id)}
           onClose={() => setSelectedId(null)}
         />
@@ -705,9 +708,10 @@ function ScheduleHero({
 }
 
 function ClientDetail({
-  client, labels: L, jobs, payments, reminders, photos, onClose,
+  client, labels: L, jobs, payments, reminders, expenses, photos, onClose,
 }: {
   client: ClientView; labels: Record<string, any>; jobs: JobView[]; payments: PayView[]; reminders: RemView[];
+  expenses: ExpenseView[];
   photos: { id: string; url: string; caption: string | null }[]; onClose: () => void;
 }) {
   const [editing, setEditing] = useState(false);
@@ -889,6 +893,14 @@ function ClientDetail({
               <DeletableRow key={p.id} left={p.amountStr} right={p.dateStr}
                 sub={p.status === "unpaid" ? L.unpaid : p.status === "overdue" ? L.overdue : undefined}
                 action={deletePayment} idName="paymentId" id={p.id} deleteTitle={L.deleteEntry} confirmText={L.confirmDeleteEntry} />
+            ))}
+          </Group>
+
+          {/* Expenses spent on this client ("spent 100 on mulch for Elena") */}
+          <Group title={L.expenses}>
+            {expenses.length === 0 ? <p className="text-sm text-gray-500">{L.none}</p> : expenses.map((e) => (
+              <DeletableRow key={e.id} left={`−${e.amountStr}`} right={e.dateStr} sub={e.label}
+                action={deleteExpense} idName="expenseId" id={e.id} deleteTitle={L.deleteEntry} confirmText={L.confirmDeleteEntry} />
             ))}
           </Group>
         </div>
