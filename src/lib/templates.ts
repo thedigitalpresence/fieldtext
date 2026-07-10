@@ -211,6 +211,12 @@ export const t = {
     lang === "es"
       ? `¿Algo que anotar sobre ${name}? (código del portón, perros, detalles) — o responde OMITIR.`
       : `Anything to note about ${name}? (gate code, dogs, details) — or reply SKIP.`,
+  needSchedule: (name: string, lang: Lang) =>
+    lang === "es"
+      ? `¿Cuándo empieza el servicio de ${name}, cada cuánto y qué día? (p. ej. "semanal los lunes desde el próximo lunes" o "mensual el 1") — o responde OMITIR.`
+      : `When does ${name}'s service start, how often, and what day? (e.g. "weekly on Mondays starting next Monday" or "monthly on the 1st") — or reply SKIP.`,
+  scheduleSaved: (name: string, when: string, lang: Lang) =>
+    lang === "es" ? `Agendado ✅ ${name} — ${when}.` : `Scheduled ✅ ${name} — ${when}.`,
   allSet: (name: string, lang: Lang) =>
     lang === "es" ? `Listo ✅ ${name} está completo.` : `All set ✅ ${name} is fully saved.`,
   yesToAdd: (name: string, lang: Lang) =>

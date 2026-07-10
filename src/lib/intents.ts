@@ -6,7 +6,7 @@ import { logLlm } from "./billing";
 import { money, periodLabel, clientSummary, businessLang, t } from "./templates";
 import {
   normalizeAmount, normalizePeriod, normalizeStatus, normalizeName, normalizeAddress,
-  computeNextService, advanceService, todayInTz,
+  computeNextService, advanceService, todayInTz, normalizeWeekday, resolveDate,
 } from "./normalize";
 import {
   generateDueCharges, createManualCharge, createJobCharge, applyPaymentToCharges,
@@ -264,6 +264,39 @@ export async function resolvePending(
       || /^\s*(quoted|quoting|coti[a-zà-ÿ]*|new job|new client)\b/i.test(a);
     if (looksLikeCommand) return null;
 
+    // Recurring-service scheduling step: "when does it start, how often, what day?"
+    if (missing.length === 1 && missing[0] === "schedule") {
+      const all0 = await listClients(business.id);
+      const target = all0.find((c) => c.id === clientId);
+      if (!target) return null;
+      const nextStep = (name: string, prefix: string): string => {
+        // Once scheduled, fall through to the optional notes step (or finish).
+        if (!target.notes) {
+          session.pending = { kind: "complete_client", action: pending.action, missing: ["notes"], expiresAt: pendingExpiry() };
+          return `${prefix} ${t.anyNotes(name, lang)}`;
+        }
+        return prefix;
+      };
+      if (/^\s*(skip|no|none|nope|nah|nada|omitir|luego|later|n\/a)\s*[.!]?\s*$/i.test(a)) {
+        return nextStep(target.name, t.allSet(target.name, lang));
+      }
+      // Don't swallow a real command ("bob paid 300") aimed elsewhere.
+      const probe = heuristicParse(a, ctx).actions[0];
+      if (probe && probe.intent !== "help" && probe.intent !== "update_client_info" && probe.confidence >= 0.55) {
+        return null;
+      }
+      const sched = parseScheduleAnswer(a, ctx.nowISO);
+      if (!sched.service_interval && !sched.next_service_on) {
+        return t.needSchedule(target.name, lang); // couldn't read it — ask once more
+      }
+      const saved = (await updateClient(clientId, sched)) ?? target;
+      const when = [
+        intervalWord(saved.service_interval, lang),
+        saved.service_day ? saved.service_day.charAt(0).toUpperCase() + saved.service_day.slice(1) : "",
+      ].filter(Boolean).join(", ") + (saved.next_service_on ? ` · ${lang === "es" ? "empieza" : "starts"} ${fmtDay(saved.next_service_on, lang)}` : "");
+      return nextStep(saved.name, t.scheduleSaved(saved.name, when, lang));
+    }
+
     // Final optional step: "anything to note?"
     if (missing.length === 1 && missing[0] === "notes") {
       const all0 = await listClients(business.id);
@@ -321,7 +354,12 @@ export async function resolvePending(
       session.pending = { kind: "complete_client", action: pending.action, missing: stillMissing, expiresAt: pendingExpiry() };
       return `${t.infoSaved(client.name, savedBits, lang)} ${t.needInfo(client.name, stillMissing, lang)}`;
     }
-    // Required profile complete — close the intake with the optional notes step.
+    // Required profile complete — recurring clients get the scheduling step next.
+    if (needsSchedule(client)) {
+      session.pending = { kind: "complete_client", action: pending.action, missing: ["schedule"], expiresAt: pendingExpiry() };
+      return `${t.infoSaved(client.name, savedBits, lang)} ${t.needSchedule(client.name, lang)}`;
+    }
+    // Then the optional notes step.
     if (!client.notes) {
       session.pending = { kind: "complete_client", action: pending.action, missing: ["notes"], expiresAt: pendingExpiry() };
       return `${t.infoSaved(client.name, savedBits, lang)} ${t.anyNotes(client.name, lang)}`;
@@ -339,6 +377,42 @@ function schedulePatch(p: ParsedAction, nowISO: string): Partial<Client> {
     service_day: p.service_day ?? null,
     next_service_on: computeNextService(p.service_interval, p.service_day, nowISO) ?? null,
   };
+}
+
+const RECURRING_PERIODS = new Set(["weekly", "biweekly", "monthly"]);
+/**
+ * A recurring-service client (billed weekly/biweekly/monthly) whose visit
+ * schedule we don't actually know yet. "$100/month" tells us the billing, not
+ * WHEN the visits happen — without that, the calendar is just guessing.
+ */
+function needsSchedule(c: Client): boolean {
+  const recurring = RECURRING_PERIODS.has(c.billing_period ?? "") || !!c.service_interval;
+  return recurring && !c.service_interval;
+}
+
+/**
+ * Turn a free-text schedule answer ("weekly on mondays starting next monday",
+ * "monthly on the 1st", "every other friday") into a service-schedule patch.
+ * An explicit start date anchors next_service_on; otherwise we compute it.
+ * Returns {} when nothing schedule-like was found (so the caller can re-ask).
+ */
+function parseScheduleAnswer(text: string, nowISO: string): Partial<Client> {
+  const lower = text.toLowerCase();
+  let interval: "weekly" | "biweekly" | "monthly" | undefined;
+  if (/(every other|bi-?weekly|cada dos|quincenal)/.test(lower)) interval = "biweekly";
+  else if (/(month|mensual)/.test(lower)) interval = "monthly";
+  else if (/(week|semanal|semana)/.test(lower)) interval = "weekly";
+  const day = normalizeWeekday(text) ?? null;
+  // A weekday with no explicit cadence ("mondays") means weekly.
+  if (!interval && day) interval = "weekly";
+  const date = resolveDate(text, nowISO);
+
+  const patch: Partial<Client> = {};
+  if (interval) patch.service_interval = interval;
+  if (day) patch.service_day = day;
+  if (date) patch.next_service_on = date.ymd;
+  else if (interval) patch.next_service_on = computeNextService(interval, day, nowISO) ?? null;
+  return patch;
 }
 function intervalWord(interval: string | null | undefined, lang: string): string {
   if (!interval) return "";
@@ -450,6 +524,12 @@ function finishIntake(client: Client, baseAction: ParsedAction, session: ActionS
   if (missing.length) {
     session.pending = { kind: "complete_client", action: { ...baseAction, client_id: client.id }, missing, expiresAt: pendingExpiry() };
     return `${confirmation}\n${t.needInfo(client.name, missing, lang)}`;
+  }
+  // Recurring service with no visit schedule yet → ask when it starts, how
+  // often, and what day (the anchor the calendar and reminders depend on).
+  if (needsSchedule(client)) {
+    session.pending = { kind: "complete_client", action: { ...baseAction, client_id: client.id }, missing: ["schedule"], expiresAt: pendingExpiry() };
+    return `${confirmation}\n${t.needSchedule(client.name, lang)}`;
   }
   if (!client.notes) {
     session.pending = { kind: "complete_client", action: { ...baseAction, client_id: client.id }, missing: ["notes"], expiresAt: pendingExpiry() };

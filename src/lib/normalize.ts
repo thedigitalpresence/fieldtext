@@ -160,8 +160,10 @@ const DAY_INDEX: Record<string, number> = {
 export function normalizeWeekday(input?: string | null): string | undefined {
   if (!input) return undefined;
   const t = input.toLowerCase();
+  // Optional trailing "s" so "mondays"/"fridays"/"sabados" match too — operators
+  // routinely say "every mondays".
   for (const [name, canon] of Object.entries(DAY_NAMES)) {
-    if (new RegExp(`\\b${name}\\b`).test(t)) return canon;
+    if (new RegExp(`\\b${name}s?\\b`).test(t)) return canon;
   }
   return undefined;
 }
@@ -256,7 +258,7 @@ export function resolveDate(text: string, nowISO: string): { ymd: string; iso: s
   if (inN) { const d = new Date(now); d.setDate(d.getDate() + parseInt(inN[1], 10)); return at9(d); }
   if (/\b(next week|pr[oó]xima semana|la semana que viene)\b/.test(lower)) { const d = new Date(now); d.setDate(d.getDate() + 7); return at9(d); }
   for (const [name, dow] of Object.entries(WEEKDAYS)) {
-    if (new RegExp(`\\b${name}\\b`).test(lower)) {
+    if (new RegExp(`\\b${name}s?\\b`).test(lower)) {
       const d = new Date(now);
       const delta = (dow - d.getDay() + 7) % 7 || 7; // next occurrence (not today)
       d.setDate(d.getDate() + delta);

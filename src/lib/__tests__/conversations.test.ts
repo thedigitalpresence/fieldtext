@@ -362,30 +362,47 @@ test("G6: photo without caption asks whose site, reply resolves it", async () =>
   assert.equal(rows[0].client_id, (dee as unknown as { id: string }).id, "attached to the right client");
 });
 
-test("G6: intake ends with an optional notes step — reply becomes the note", async () => {
+test("G6: recurring intake asks the schedule, then the optional notes step", async () => {
   await convo("G6 intake-notes", [], [
     { send: "new job Rosa Marin has mowing for 200 a month", expect: [/address/i, /phone/i] },
-    { send: "42 maple st 555-123-4567", expect: [/anything to note/i, /SKIP/i] },
+    { send: "42 maple st 555-123-4567", expect: [/how often/i, /what day/i] }, // schedule step
+    { send: "monthly on the 1st", expect: [/Scheduled ✅/i, /anything to note/i, /SKIP/i] },
     { send: "big dog in back yard, gate code 1187", expect: [/Note saved ✅/i] },
   ]);
   const row = await getClient("Rosa Marin");
+  assert.equal(row!.service_interval, "monthly", "cadence captured from the schedule step");
+  assert.ok(row!.next_service_on, "start date anchored");
   assert.match(String(row!.notes), /gate code 1187/);
 });
 
-test("G6: SKIP ends the intake cleanly", async () => {
+test("G6: SKIP ends the intake cleanly (through the schedule step)", async () => {
   await convo("G6 intake-skip", [], [
     { send: "new job Leo Park has edging for 100 a week", expect: [/address/i] },
-    { send: "9 cedar ct 555-123-9999", expect: [/anything to note/i] },
+    { send: "9 cedar ct 555-123-9999", expect: [/how often/i] }, // schedule step
+    { send: "weekly on fridays", expect: [/Scheduled ✅/i, /anything to note/i] },
     { send: "skip", expect: [/All set ✅/i] },
   ]);
   const row = await getClient("Leo Park");
+  assert.equal(row!.service_interval, "weekly");
+  assert.equal(row!.service_day, "friday");
   assert.equal(row!.notes, null, "no junk note saved");
+});
+
+test("G6: SKIP on the schedule step leaves the client unscheduled but saved", async () => {
+  await convo("G6 schedule-skip", [], [
+    { send: "new job Nora Vance has cleanup for 150 a month", expect: [/address/i] },
+    { send: "3 birch ln 555-123-8888", expect: [/how often/i] },
+    { send: "skip", expect: [/All set ✅/i] },
+  ]);
+  const row = await getClient("Nora Vance");
+  assert.equal(row!.service_interval, null, "schedule left blank when skipped");
 });
 
 test("G6: a real command during the notes step is executed, not eaten as a note", async () => {
   await convo("G6 notes-interrupt", FULL_BOOK, [
     { send: "new job Ana Reyes has weeding for 120 a month", expect: [/address/i] },
-    { send: "10 oak way 555-123-2222", expect: [/anything to note/i] },
+    { send: "10 oak way 555-123-2222", expect: [/how often/i] }, // schedule step
+    { send: "monthly on mondays", expect: [/anything to note/i] },
     { send: "collected 200 from dee garcia", expect: [/from Dee Garcia/] },
   ]);
   const row = await getClient("Ana Reyes");
