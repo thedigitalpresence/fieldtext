@@ -324,6 +324,7 @@ export default async function DashboardPage({ searchParams }: { searchParams?: {
     intervalNone: d.intervalNone, intervalWeekly: d.intervalWeekly,
     intervalBiweekly: d.intervalBiweekly, intervalMonthly: d.intervalMonthly,
     confirmDeleteEntry: d.confirmDeleteEntry, periodOneTime: d.periodOneTime, expenses: d.expenses,
+    helpTitle: d.helpTitle,
     exportCsv: d.exportCsv, phoneLabel: d.phoneLabel, emailLabel: d.emailLabel,
     pausedUntil: d.pausedUntil, pausedGroup: d.pausedGroup, confirmDecline: d.confirmDecline,
     photos: d.photos,

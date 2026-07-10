@@ -8,7 +8,7 @@ import {
   FileText, UserCheck, Briefcase, DollarSign, Bell, MessageCircle, Languages,
   CalendarClock, Search, X, Check, Clock, Ban, Upload, Sun, TrendingUp, AlertCircle,
   Download, Loader2, ChevronRight, ChevronLeft, Phone, PauseCircle, Pencil, Users,
-  CalendarDays, MapPin,
+  CalendarDays, MapPin, HelpCircle,
 } from "lucide-react";
 import { Logo } from "@/app/Logo";
 import type { ClientStatus, Lang } from "@/lib/types";
@@ -217,6 +217,9 @@ export default function DashboardClient(props: Props) {
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          <Link href="/dashboard/help" title={L.helpTitle} aria-label={L.helpTitle} className={`flex ${TAP} min-w-[44px] items-center justify-center rounded-lg border border-gray-300 px-2.5 text-gray-600 hover:bg-gray-100`}>
+            <HelpCircle className="h-4 w-4" />
+          </Link>
           {props.admin && (
             <Link href="/dashboard/admin" title="Operators" aria-label="Operators" className={`flex ${TAP} min-w-[44px] items-center justify-center rounded-lg border border-gray-300 px-2.5 text-gray-600 hover:bg-gray-100`}>
               <Users className="h-4 w-4" />
