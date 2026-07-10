@@ -2,37 +2,29 @@
 
 import Link from "next/link";
 import { useFormState, useFormStatus } from "react-dom";
-import { submitSignup, type SignupResult } from "./actions";
+import { submitWaitlist, type WaitlistResult } from "./actions";
 import { Logo } from "@/app/Logo";
 
-// Public consent / signup page. Used as opt-in proof for Twilio A2P
-// verification, and as the real front door for onboarding operators.
-// The form SAVES: signups table + proof-of-consent + founder SMS alert.
+// Public BETA WAITLIST page. During beta this does NOT create an account — it
+// saves a lead the founder reviews and hand-picks from. Also serves as written
+// opt-in proof for Twilio A2P (we text selected testers). The full account
+// flow is preserved in actions.ts (submitSignup) for open self-serve later.
 export default function SignupPage() {
-  const [state, formAction] = useFormState<SignupResult | null, FormData>(submitSignup, null);
+  const [state, formAction] = useFormState<WaitlistResult | null, FormData>(submitWaitlist, null);
 
   if (state?.ok) {
     return (
       <main className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center px-6 text-center">
         <div className="rounded-2xl border border-gray-100 bg-white p-8 shadow-sm">
           <Logo className="mx-auto mb-3 h-12 w-12 text-brand" />
-          <h1 className="mb-2 text-2xl font-bold">One last step</h1>
+          <h1 className="mb-2 text-2xl font-bold">You&apos;re on the list</h1>
           <p className="text-gray-600">
-            Text this code to{" "}
-            <a href={`sms:+19714625343${state.code ? `?body=${state.code}` : ""}`} className="font-semibold text-brand underline">(971) 462-5343</a>{" "}
-            from your phone to activate:
-          </p>
-          {state.code && (
-            <p className="mt-3 rounded-lg bg-brand/10 px-3 py-2 text-3xl font-bold tracking-[0.3em] text-brand">{state.code}</p>
-          )}
-          <p className="mt-3 text-sm text-gray-500">
-            That confirms it&apos;s really your number, and your black book goes live instantly. The code only works
-            from the mobile number you signed up with.
+            Thanks for signing up for the FieldText beta. We&apos;re onboarding a small group at a time, by hand,
+            so it stays personal. We&apos;ll <span className="font-medium">text you soon</span> to get you set up.
           </p>
           <p className="mt-4 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-600">
-            To use the web dashboard, sign in at{" "}
-            <a href="/dashboard" className="font-medium text-brand underline">fieldtextapp.com/dashboard</a>{" "}
-            with your <span className="font-medium">mobile number</span> and the password you just chose.
+            Questions in the meantime? Email{" "}
+            <a href="mailto:eric@fieldtextapp.com" className="font-medium text-brand underline">eric@fieldtextapp.com</a>.
           </p>
           <p className="mt-3 text-xs text-gray-400">Reply STOP anytime to opt out · HELP for help.</p>
         </div>
@@ -44,18 +36,28 @@ export default function SignupPage() {
     <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6 py-12">
       <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm sm:p-8">
         <h1 className="text-2xl font-bold tracking-tight">
-          Field<span className="text-brand">Text</span>
+          Join the Field<span className="text-brand">Text</span> beta
         </h1>
         <p className="mt-1 text-gray-600">
-          Run your business by text. Landscapers, handymen, cleaners, painters, pool techs, and anyone
-          working out of a truck. Log quotes, jobs, payments, and reminders in plain language. FieldText
-          saves it and texts you back. Sign up to join the beta.
+          We&apos;re opening up to a small group of field-service pros first. Tell us a bit about you and
+          we&apos;ll reach out to get you set up. This just adds you to the list — no account is created yet.
         </p>
 
         <form action={formAction} className="mt-6 space-y-4">
           <Field label="Your name" name="name" type="text" required />
-          <Field label="Business name" name="business" type="text" required />
+          <Field label="Business name" name="business" type="text" placeholder="Optional" />
           <Field label="Mobile number" name="phone" type="tel" required placeholder="(555) 123-4567" />
+          <Field label="What do you do?" name="trade" type="text" required placeholder="Landscaper, handyman, cleaner…" />
+          <div>
+            <label className="mb-1 block text-sm font-medium" htmlFor="needs">What do you need it for?</label>
+            <textarea
+              id="needs"
+              name="needs"
+              rows={3}
+              placeholder="What&apos;s a headache you'd want this to take off your plate?"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
+            />
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="mb-1 block text-sm font-medium" htmlFor="language">Language</label>
@@ -77,10 +79,6 @@ export default function SignupPage() {
               </select>
             </div>
           </div>
-          <div>
-            <Field label="Choose a password" name="password" type="password" required placeholder="at least 6 characters" />
-            <p className="mt-1 text-xs text-gray-400">You&apos;ll sign in to the web dashboard with your mobile number and this password.</p>
-          </div>
 
           <label className="flex items-start gap-2 text-sm text-gray-600">
             <input name="consent" type="checkbox" required className="mt-1 h-4 w-4 rounded border-gray-300 text-brand focus:ring-brand" />
@@ -101,7 +99,7 @@ export default function SignupPage() {
         </form>
 
         <p className="mt-4 text-center text-xs text-gray-400">
-          By signing up you agree to our <Link href="/terms" className="underline hover:text-gray-600">terms</Link> and{" "}
+          By joining you agree to our <Link href="/terms" className="underline hover:text-gray-600">terms</Link> and{" "}
           <Link href="/privacy" className="underline hover:text-gray-600">privacy policy</Link>, and to receive SMS as
           described above. We never share your number with third parties for marketing. Reply STOP to cancel, HELP for help.
         </p>
@@ -118,7 +116,7 @@ function SubmitButton() {
       disabled={pending}
       className="min-h-[44px] w-full rounded-lg bg-brand px-4 py-2.5 font-medium text-white hover:bg-brand-dark disabled:opacity-60"
     >
-      {pending ? "Signing you up…" : "Sign up & get started by text"}
+      {pending ? "Adding you…" : "Join the beta list"}
     </button>
   );
 }

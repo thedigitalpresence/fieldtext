@@ -8,7 +8,7 @@ import {
   FileText, UserCheck, Briefcase, DollarSign, Bell, MessageCircle, Languages,
   CalendarClock, Search, X, Check, Clock, Ban, Upload, Sun, TrendingUp, AlertCircle,
   Download, Loader2, ChevronRight, ChevronLeft, Phone, PauseCircle, Pencil, Users,
-  CalendarDays, MapPin, HelpCircle,
+  CalendarDays, MapPin, HelpCircle, ClipboardList,
 } from "lucide-react";
 import { Logo } from "@/app/Logo";
 import type { ClientStatus, Lang } from "@/lib/types";
@@ -221,9 +221,14 @@ export default function DashboardClient(props: Props) {
             <HelpCircle className="h-4 w-4" />
           </Link>
           {props.admin && (
-            <Link href="/dashboard/admin" title="Operators" aria-label="Operators" className={`flex ${TAP} min-w-[44px] items-center justify-center rounded-lg border border-gray-300 px-2.5 text-gray-600 hover:bg-gray-100`}>
-              <Users className="h-4 w-4" />
-            </Link>
+            <>
+              <Link href="/dashboard/waitlist" title="Beta waitlist" aria-label="Beta waitlist" className={`flex ${TAP} min-w-[44px] items-center justify-center rounded-lg border border-gray-300 px-2.5 text-gray-600 hover:bg-gray-100`}>
+                <ClipboardList className="h-4 w-4" />
+              </Link>
+              <Link href="/dashboard/admin" title="Operators" aria-label="Operators" className={`flex ${TAP} min-w-[44px] items-center justify-center rounded-lg border border-gray-300 px-2.5 text-gray-600 hover:bg-gray-100`}>
+                <Users className="h-4 w-4" />
+              </Link>
+            </>
           )}
           <div className="flex overflow-hidden rounded-lg border border-gray-300 text-xs font-medium">
             {(["en", "es"] as Lang[]).map((lng) => (
