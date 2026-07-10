@@ -268,7 +268,7 @@ export async function editClient(formData: FormData) {
   const b = await currentBusiness();
   const { data: cur } = await db().from("clients").select("*").eq("id", clientId).eq("business_id", b.id).maybeSingle();
   if (!cur) return;
-  const c = cur as { service_interval: string | null; service_day: string | null };
+  const c = cur as { service_interval: string | null; service_day: string | null; next_service_on: string | null };
   const val = (k: string) => { const v = formData.get(k); return v == null ? "" : String(v).trim(); };
   const amtRaw = val("amount");
   const patch: Record<string, unknown> = {
@@ -284,12 +284,21 @@ export async function editClient(formData: FormData) {
   if (!patch.name) delete patch.name; // never blank the name
   // Service cadence: only touch the schedule when it actually CHANGED, so fixing
   // a typo in the name doesn't silently reset a client's next-visit date.
+  // An explicit "Next service" date is the anchor and always wins — "monthly
+  // starting the 15th" is meaningless without it. No date given → best guess
+  // from the interval + route day.
   const interval = val("service_interval");
   const day = val("service_day");
-  if ((c.service_interval ?? "") !== interval || (c.service_day ?? "") !== day) {
+  const nextVisit = val("next_visit");
+  const nextVisitValid = /^\d{4}-\d{2}-\d{2}$/.test(nextVisit);
+  const cadenceChanged = (c.service_interval ?? "") !== interval || (c.service_day ?? "") !== day;
+  const dateChanged = nextVisitValid && nextVisit !== (c.next_service_on ?? "");
+  if (cadenceChanged || dateChanged) {
     patch.service_interval = interval || null;
     patch.service_day = day || null;
-    patch.next_service_on = interval
+    patch.next_service_on = nextVisitValid
+      ? nextVisit
+      : interval
       ? computeNextService(interval as "weekly" | "biweekly" | "monthly", day || null, new Date().toISOString()) ?? null
       : null;
   }

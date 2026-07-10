@@ -153,6 +153,7 @@ const en = {
   intervalBiweekly: "Every 2 weeks",
   intervalMonthly: "Monthly",
   confirmDeleteEntry: "Delete this entry?",
+  periodOneTime: "One-time",
 };
 
 const es: Dict = {
@@ -290,6 +291,7 @@ const es: Dict = {
   intervalBiweekly: "Cada 2 semanas",
   intervalMonthly: "Mensual",
   confirmDeleteEntry: "¿Borrar esta entrada?",
+  periodOneTime: "Única vez",
 };
 
 const DICTS: Record<Lang, Dict> = { en, es };

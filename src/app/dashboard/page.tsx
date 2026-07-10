@@ -226,6 +226,7 @@ export default async function DashboardPage({ searchParams }: { searchParams?: {
         nextServiceStr: c.next_service_on ? fmtShort(c.next_service_on, lang) : null,
         serviceDay: c.service_day ?? null,
         serviceInterval: c.service_interval ?? null,
+        nextServiceRaw: c.next_service_on ?? null,
         pausedUntilStr: c.paused_until ? fmtShort(c.paused_until, lang) : null,
       };
     });
@@ -319,7 +320,7 @@ export default async function DashboardPage({ searchParams }: { searchParams?: {
     howOften: d.howOften, dayLabel: d.dayLabel, whenLabel: d.whenLabel,
     intervalNone: d.intervalNone, intervalWeekly: d.intervalWeekly,
     intervalBiweekly: d.intervalBiweekly, intervalMonthly: d.intervalMonthly,
-    confirmDeleteEntry: d.confirmDeleteEntry,
+    confirmDeleteEntry: d.confirmDeleteEntry, periodOneTime: d.periodOneTime,
     exportCsv: d.exportCsv, phoneLabel: d.phoneLabel, emailLabel: d.emailLabel,
     pausedUntil: d.pausedUntil, pausedGroup: d.pausedGroup, confirmDecline: d.confirmDecline,
     photos: d.photos,

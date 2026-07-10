@@ -35,7 +35,7 @@ type ClientView = {
   phone: string | null; email: string | null;
   sentStr: string; sinceStr: string; nextStr: string | null;
   scheduleStr: string | null; nextServiceStr: string | null; serviceDay: string | null;
-  serviceInterval: string | null;
+  serviceInterval: string | null; nextServiceRaw: string | null;
   pausedUntilStr: string | null;
 };
 type Upcoming = {
@@ -755,7 +755,8 @@ function ClientDetail({
                 <label className="block text-xs">
                   <span className="mb-1 block font-medium text-gray-500">{L.colPeriod}</span>
                   <select name="billing_period" defaultValue={client.billingPeriod ?? ""} className="w-full rounded-lg border border-gray-200 px-2 py-2 text-sm text-gray-700 focus:border-brand focus:outline-none">
-                    {["", "monthly", "weekly", "biweekly", "one_time"].map((p) => <option key={p} value={p}>{p || "—"}</option>)}
+                    {([["", "—"], ["monthly", L.intervalMonthly], ["weekly", L.intervalWeekly], ["biweekly", L.intervalBiweekly], ["one_time", L.periodOneTime]] as const)
+                      .map(([v, lbl]) => <option key={v} value={v}>{lbl}</option>)}
                   </select>
                 </label>
               </div>
@@ -778,6 +779,15 @@ function ClientDetail({
                   </select>
                 </label>
               </div>
+              <label className="block text-xs">
+                <span className="mb-1 block font-medium text-gray-500">{L.nextService}</span>
+                <input
+                  type="date"
+                  name="next_visit"
+                  defaultValue={client.nextServiceRaw ?? ""}
+                  className="w-full rounded-lg border border-gray-200 px-2 py-2 text-sm text-gray-700 focus:border-brand focus:outline-none"
+                />
+              </label>
               <label className="block text-xs">
                 <span className="mb-1 block font-medium text-gray-500">{L.notes}</span>
                 <textarea
