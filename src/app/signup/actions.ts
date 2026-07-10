@@ -9,7 +9,8 @@ import { hashPassword } from "@/lib/password";
 // The exact consent sentence shown next to the checkbox — stored verbatim as
 // proof-of-consent (what carriers ask for in an A2P dispute). This is the
 // WRITTEN half of double opt-in; texting the number is the mobile-originated half.
-export const CONSENT_TEXT =
+// NOTE: not exported — a "use server" file may only export async functions.
+const CONSENT_TEXT =
   "I agree to receive recurring SMS text messages from FieldText at the mobile number I provided, to log and " +
   "manage my business, including confirmations, quote and job reminders, follow-up nudges, and account " +
   "notifications. Message frequency varies. Message & data rates may apply. Reply STOP to opt out and HELP for " +
