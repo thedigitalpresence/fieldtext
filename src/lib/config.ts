@@ -24,6 +24,8 @@ export const config = {
     apiKey: () => required("ANTHROPIC_API_KEY"),
     model: () => optional("ANTHROPIC_MODEL", "claude-opus-4-8"),
   },
+  /** Read-only UptimeRobot key → live site status on the HQ dashboard. Optional. */
+  uptimeRobotKey: () => optional("UPTIMEROBOT_API_KEY"),
   cronSecret: () => required("CRON_SECRET"),
   dashboardPassword: () => required("DASHBOARD_PASSWORD"),
   defaultBusinessSlug: () => optional("DEFAULT_BUSINESS_SLUG", "green-acres"),

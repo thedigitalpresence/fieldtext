@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Wallet, ClipboardList, Users, Sparkles, ExternalLink, UserPlus, Eye } from "lucide-react";
+import { Wallet, ClipboardList, Users, Sparkles, ExternalLink, UserPlus, Eye, Activity } from "lucide-react";
 import { db, currentSession, listBusinesses } from "@/lib/supabase";
 import { getTwilioUsage } from "@/lib/twilio-usage";
+import { getUptimeStatus } from "@/lib/uptime";
 import { loadWaitlistLeads } from "../waitlist/data";
 import { WaitlistPanel } from "../waitlist/WaitlistClient";
 import { switchBusiness } from "../actions";
@@ -30,8 +31,9 @@ export default async function HqPage() {
   monthStart.setUTCDate(1);
   monthStart.setUTCHours(0, 0, 0, 0);
 
-  const [usage, leads, businesses, phonesRes, inboundRes] = await Promise.all([
+  const [usage, uptime, leads, businesses, phonesRes, inboundRes] = await Promise.all([
     getTwilioUsage(),
+    getUptimeStatus(),
     loadWaitlistLeads(),
     listBusinesses(),
     db().from("authorized_phones").select("*"),
@@ -61,6 +63,9 @@ export default async function HqPage() {
           {leads.length} signups · {newCount} new · {activeCount} active
         </p>
       </header>
+
+      {/* ── Site status ───────────────────────────────────────── */}
+      <SiteStatus uptime={uptime} />
 
       {/* ── Costs ─────────────────────────────────────────────── */}
       <section className="space-y-3">
@@ -124,6 +129,44 @@ export default async function HqPage() {
         <Sparkles className="h-3.5 w-3.5" /> This is your command center. Bookmark <span className="font-medium text-gray-500">/dashboard/hq</span>.
       </div>
     </main>
+  );
+}
+
+function SiteStatus({ uptime }: { uptime: import("@/lib/uptime").UptimeStatus }) {
+  // Not connected yet → a gentle nudge with the setup path.
+  if (!uptime.configured) {
+    return (
+      <section className="flex items-center justify-between gap-3 rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-3">
+        <span className="flex items-center gap-2 text-sm text-gray-500"><Activity className="h-4 w-4" /> Site monitoring not connected</span>
+        <span className="text-xs text-gray-400">Add UPTIMEROBOT_API_KEY in Vercel to see uptime here</span>
+      </section>
+    );
+  }
+
+  const dot = { up: "bg-green-500", down: "bg-red-500", paused: "bg-gray-400", pending: "bg-amber-400", unknown: "bg-gray-300" }[uptime.state];
+  const word = { up: "Online", down: "DOWN", paused: "Paused", pending: "Starting up", unknown: "Unknown" }[uptime.state];
+  const isDown = uptime.state === "down";
+
+  return (
+    <section className={`rounded-2xl border p-4 shadow-sm ${isDown ? "border-red-200 bg-red-50" : "border-gray-100 bg-white"}`}>
+      <div className="flex items-center justify-between">
+        <span className="flex items-center gap-2 text-sm font-medium text-gray-700">
+          <Activity className="h-4 w-4 text-brand-dark" /> Site status
+        </span>
+        <span className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+          <span className={`h-2.5 w-2.5 rounded-full ${dot}`} />{word}
+        </span>
+      </div>
+      {uptime.ok ? (
+        <div className="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-xs text-gray-500">
+          <span>7-day uptime <span className="font-semibold text-gray-800">{uptime.uptime7d != null ? `${uptime.uptime7d.toFixed(2)}%` : "—"}</span></span>
+          <span>30-day <span className="font-semibold text-gray-800">{uptime.uptime30d != null ? `${uptime.uptime30d.toFixed(2)}%` : "—"}</span></span>
+          <span>Response <span className="font-semibold text-gray-800">{uptime.avgResponseMs != null ? `${uptime.avgResponseMs} ms` : "—"}</span></span>
+        </div>
+      ) : (
+        <p className="mt-1 text-xs text-amber-700">Couldn&apos;t reach UptimeRobot just now — reload in a minute.</p>
+      )}
+    </section>
   );
 }
 
