@@ -147,6 +147,32 @@ export async function applyPaymentToCharges(businessId: string, clientId: string
   return clientBalance(businessId, clientId);
 }
 
+/**
+ * Undo a deleted payment's effect on the ledger: give the amount back to the
+ * client's settled charges, newest first (the mirror of applyPaymentToCharges).
+ * Without this, deleting a fat-fingered "$4500" payment would leave the charges
+ * marked paid and "who owes me?" would still say zero.
+ */
+export async function reversePaymentFromCharges(businessId: string, clientId: string, amount: number): Promise<void> {
+  const { data: rows } = await db()
+    .from("charges").select("*")
+    .eq("business_id", businessId).eq("client_id", clientId)
+    .in("status", ["paid", "partial"])
+    .order("due_on", { ascending: false });
+  let remaining = amount;
+  for (const ch of (rows ?? []) as Charge[]) {
+    if (remaining <= 0) break;
+    const paid = Number(ch.paid_amount);
+    if (paid <= 0) continue;
+    const take = Math.min(paid, remaining);
+    const newPaid = paid - take;
+    await db().from("charges")
+      .update({ paid_amount: newPaid, status: newPaid <= 0 ? "open" : "partial" })
+      .eq("id", ch.id);
+    remaining -= take;
+  }
+}
+
 /** What one client still owes. */
 export async function clientBalance(businessId: string, clientId: string): Promise<number> {
   const { data: rows } = await db()

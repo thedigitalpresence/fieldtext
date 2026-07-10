@@ -225,6 +225,7 @@ export default async function DashboardPage({ searchParams }: { searchParams?: {
         scheduleStr: interval ? [interval, c.service_day ? c.service_day.charAt(0).toUpperCase() + c.service_day.slice(1) : ""].filter(Boolean).join(" · ") : null,
         nextServiceStr: c.next_service_on ? fmtShort(c.next_service_on, lang) : null,
         serviceDay: c.service_day ?? null,
+        serviceInterval: c.service_interval ?? null,
         pausedUntilStr: c.paused_until ? fmtShort(c.paused_until, lang) : null,
       };
     });
@@ -277,7 +278,12 @@ export default async function DashboardPage({ searchParams }: { searchParams?: {
 
   const jobViews = jobs.map((j) => ({ id: j.id, clientId: j.client_id, description: j.description, dateStr: fmtShort(j.performed_on, lang), who: j.client_id ? nameOf(j.client_id) : null }));
   const payViews = payments.map((p) => ({ id: p.id, clientId: p.client_id, amountStr: money(p.amount), dateStr: fmtShort(p.paid_on ?? p.created_at, lang), who: p.client_id ? nameOf(p.client_id) : null, status: p.status ?? "paid" }));
-  const reminderViews = reminders.map((r) => ({ id: r.id, clientId: r.client_id, text: r.text, dateStr: fmtShort(r.due_at, lang), kind: r.kind }));
+  // Reminders show date AND time (manual ones can now be scheduled to the minute).
+  const reminderViews = reminders.map((r) => ({
+    id: r.id, clientId: r.client_id, text: r.text,
+    dateStr: new Date(r.due_at).toLocaleString(locale, { timeZone: tz, month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }),
+    kind: r.kind,
+  }));
 
   // Localized weekday names keyed by lowercase English name (Jan 7 2024 = Sunday).
   const weekdays: Record<string, string> = {};
@@ -309,6 +315,10 @@ export default async function DashboardPage({ searchParams }: { searchParams?: {
     calendarView: d.calendarView, dayView: d.dayView, backToToday: d.backToToday,
     nothingThatDay: d.nothingThatDay, prevDay: d.prevDay, nextDay: d.nextDay,
     scheduledJob: d.scheduledJob, reminderWord: d.reminderWord,
+    howOften: d.howOften, dayLabel: d.dayLabel, whenLabel: d.whenLabel,
+    intervalNone: d.intervalNone, intervalWeekly: d.intervalWeekly,
+    intervalBiweekly: d.intervalBiweekly, intervalMonthly: d.intervalMonthly,
+    confirmDeleteEntry: d.confirmDeleteEntry,
     exportCsv: d.exportCsv, phoneLabel: d.phoneLabel, emailLabel: d.emailLabel,
     pausedUntil: d.pausedUntil, pausedGroup: d.pausedGroup, confirmDecline: d.confirmDecline,
     photos: d.photos,

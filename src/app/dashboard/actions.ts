@@ -10,8 +10,8 @@ import { createReminder, cancelQuoteReminders } from "@/lib/reminders";
 import { signSession, verifySession, parseSession } from "@/lib/auth";
 import { hashPassword, verifyPassword, safeEqual } from "@/lib/password";
 import { throttleStatus, recordFailure, clearFailures } from "@/lib/security";
-import { applyPaymentToCharges } from "@/lib/charges";
-import { normalizeAmount, normalizeName, normalizeAddress } from "@/lib/normalize";
+import { applyPaymentToCharges, reversePaymentFromCharges } from "@/lib/charges";
+import { normalizeAmount, normalizeName, normalizeAddress, computeNextService } from "@/lib/normalize";
 import { toE164 } from "@/lib/phone";
 import type { ChargeStatus, ClientStatus, Lang } from "@/lib/types";
 
@@ -191,6 +191,9 @@ export async function setCity(formData: FormData) {
     settings: { ...settings, city: geo.label, lat: geo.lat, lon: geo.lon },
   }).eq("id", b.id);
   revalidatePath("/dashboard");
+  // Full redirect so a stale ?cityerr=1 from an earlier failed try is cleared —
+  // otherwise the error banner (and the reopened form) haunt every refresh.
+  redirect("/dashboard");
 }
 
 export async function markStatus(formData: FormData) {
@@ -228,10 +231,21 @@ export async function addReminderAction(formData: FormData) {
   if (!text) return;
   const b = await currentBusiness();
   if (!(await ownsClient(b.id, clientId))) return;
-  const due = new Date();
-  due.setDate(due.getDate() + 3);
-  due.setHours(9, 0, 0, 0);
-  await createReminder({ businessId: b.id, clientId, text, dueISO: due.toISOString(), kind: "manual" });
+  // Optional date + time from the form, interpreted in the BUSINESS timezone.
+  // No date given → the old default: three days out at 9 AM.
+  const date = String(formData.get("date") ?? "").trim();
+  const time = String(formData.get("time") ?? "").trim();
+  let dueISO: string;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    const hhmm = /^\d{2}:\d{2}/.test(time) ? time.slice(0, 5) : "09:00";
+    dueISO = dueAtInTz(date, hhmm, b.timezone || "America/New_York");
+  } else {
+    const due = new Date();
+    due.setDate(due.getDate() + 3);
+    due.setHours(9, 0, 0, 0);
+    dueISO = due.toISOString();
+  }
+  await createReminder({ businessId: b.id, clientId, text, dueISO, kind: "manual" });
   revalidatePath("/dashboard");
 }
 
@@ -252,6 +266,9 @@ export async function logPayment(formData: FormData) {
 export async function editClient(formData: FormData) {
   const clientId = String(formData.get("clientId"));
   const b = await currentBusiness();
+  const { data: cur } = await db().from("clients").select("*").eq("id", clientId).eq("business_id", b.id).maybeSingle();
+  if (!cur) return;
+  const c = cur as { service_interval: string | null; service_day: string | null };
   const val = (k: string) => { const v = formData.get(k); return v == null ? "" : String(v).trim(); };
   const amtRaw = val("amount");
   const patch: Record<string, unknown> = {
@@ -259,12 +276,50 @@ export async function editClient(formData: FormData) {
     address: val("address") ? normalizeAddress(val("address")) : null,
     phone: val("phone") || null,
     service_description: val("service") || null,
+    notes: val("notes") || null,
     amount: amtRaw ? normalizeAmount(amtRaw) ?? null : null,
     billing_period: val("billing_period") || null,
     updated_at: new Date().toISOString(),
   };
   if (!patch.name) delete patch.name; // never blank the name
+  // Service cadence: only touch the schedule when it actually CHANGED, so fixing
+  // a typo in the name doesn't silently reset a client's next-visit date.
+  const interval = val("service_interval");
+  const day = val("service_day");
+  if ((c.service_interval ?? "") !== interval || (c.service_day ?? "") !== day) {
+    patch.service_interval = interval || null;
+    patch.service_day = day || null;
+    patch.next_service_on = interval
+      ? computeNextService(interval as "weekly" | "biweekly" | "monthly", day || null, new Date().toISOString()) ?? null
+      : null;
+  }
   await db().from("clients").update(patch).eq("id", clientId).eq("business_id", b.id);
+  revalidatePath("/dashboard");
+}
+
+/** "YYYY-MM-DD at HH:MM in the business's timezone" → UTC ISO. (±1h on DST switch days is fine for reminders.) */
+function dueAtInTz(dateStr: string, timeStr: string, tz: string): string {
+  const guess = new Date(`${dateStr}T${timeStr}:00Z`);
+  const wall = new Date(guess.toLocaleString("en-US", { timeZone: tz }));
+  return new Date(guess.getTime() + (guess.getTime() - wall.getTime())).toISOString();
+}
+
+/** Delete a payment AND give the money back to the ledger (mistake eraser). */
+export async function deletePayment(formData: FormData) {
+  const id = String(formData.get("paymentId"));
+  const b = await currentBusiness();
+  const { data } = await db().from("payments").select("*").eq("id", id).eq("business_id", b.id).maybeSingle();
+  if (!data) return;
+  const p = data as { client_id: string | null; amount: number };
+  await db().from("payments").delete().eq("id", id).eq("business_id", b.id);
+  if (p.client_id) await reversePaymentFromCharges(b.id, p.client_id, Number(p.amount));
+  revalidatePath("/dashboard");
+}
+
+export async function deleteJob(formData: FormData) {
+  const id = String(formData.get("jobId"));
+  const b = await currentBusiness();
+  await db().from("jobs").delete().eq("id", id).eq("business_id", b.id);
   revalidatePath("/dashboard");
 }
 

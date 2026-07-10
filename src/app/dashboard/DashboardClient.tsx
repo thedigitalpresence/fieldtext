@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -13,7 +13,7 @@ import {
 import type { ClientStatus, Lang } from "@/lib/types";
 import {
   logout, setLanguage, markStatus, addNote, addReminderAction, logPayment, reminderAction,
-  editClient, settleBalance, voidBalance, switchBusiness, setCity,
+  editClient, settleBalance, voidBalance, switchBusiness, setCity, deletePayment, deleteJob,
 } from "./actions";
 
 const STATUS_COLOR: Record<ClientStatus, string> = {
@@ -35,6 +35,7 @@ type ClientView = {
   phone: string | null; email: string | null;
   sentStr: string; sinceStr: string; nextStr: string | null;
   scheduleStr: string | null; nextServiceStr: string | null; serviceDay: string | null;
+  serviceInterval: string | null;
   pausedUntilStr: string | null;
 };
 type Upcoming = {
@@ -759,6 +760,33 @@ function ClientDetail({
                 </label>
               </div>
               <EditField name="service" label={L.service} defaultValue={client.service ?? ""} />
+              <div className="grid grid-cols-2 items-end gap-2">
+                <label className="block text-xs">
+                  <span className="mb-1 block font-medium text-gray-500">{L.howOften}</span>
+                  <select name="service_interval" defaultValue={client.serviceInterval ?? ""} className="w-full rounded-lg border border-gray-200 px-2 py-2 text-sm text-gray-700 focus:border-brand focus:outline-none">
+                    <option value="">{L.intervalNone}</option>
+                    <option value="weekly">{L.intervalWeekly}</option>
+                    <option value="biweekly">{L.intervalBiweekly}</option>
+                    <option value="monthly">{L.intervalMonthly}</option>
+                  </select>
+                </label>
+                <label className="block text-xs">
+                  <span className="mb-1 block font-medium text-gray-500">{L.dayLabel}</span>
+                  <select name="service_day" defaultValue={client.serviceDay ?? ""} className="w-full rounded-lg border border-gray-200 px-2 py-2 text-sm text-gray-700 focus:border-brand focus:outline-none">
+                    <option value="">—</option>
+                    {DAY_ORDER.map((d) => <option key={d} value={d}>{L.weekdays?.[d] ?? d}</option>)}
+                  </select>
+                </label>
+              </div>
+              <label className="block text-xs">
+                <span className="mb-1 block font-medium text-gray-500">{L.notes}</span>
+                <textarea
+                  name="notes"
+                  defaultValue={client.notes ?? ""}
+                  rows={3}
+                  className="w-full rounded-lg border border-gray-200 px-2 py-2 text-sm focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
+                />
+              </label>
               <div className="flex gap-2 pt-1">
                 <ActionSubmit label={L.save} primary />
                 <button type="button" onClick={() => setEditing(false)} className={`${TAP} rounded-lg border border-gray-300 px-4 text-sm font-medium text-gray-700 hover:bg-gray-100`}>{L.cancel}</button>
@@ -792,7 +820,7 @@ function ClientDetail({
 
           {/* Add note / reminder / payment */}
           <MiniForm action={addNote} clientId={client.id} name="note" placeholder={L.notePlaceholder} button={L.addNote} />
-          <MiniForm action={addReminderAction} clientId={client.id} name="text" placeholder={L.reminderTextPlaceholder} button={L.addReminder} />
+          <ReminderForm clientId={client.id} labels={L} />
           <MiniForm action={logPayment} clientId={client.id} name="amount" placeholder={L.amountPlaceholder} button={L.logPayment} numeric />
 
           {/* Notes */}
@@ -833,20 +861,20 @@ function ClientDetail({
             ))}
           </Group>
 
-          {/* Jobs */}
+          {/* Jobs — deletable so a fat-fingered entry isn't forever */}
           <Group title={L.jobs}>
-            {jobs.length === 0 ? <p className="text-sm text-gray-500">{L.none}</p> : jobs.map((j) => <Row key={j.id} left={j.description} right={j.dateStr} />)}
+            {jobs.length === 0 ? <p className="text-sm text-gray-500">{L.none}</p> : jobs.map((j) => (
+              <DeletableRow key={j.id} left={j.description} right={j.dateStr}
+                action={deleteJob} idName="jobId" id={j.id} deleteTitle={L.deleteEntry} confirmText={L.confirmDeleteEntry} />
+            ))}
           </Group>
 
-          {/* Payments */}
+          {/* Payments — deleting one gives the amount back to "Money owed" */}
           <Group title={L.payments}>
             {payments.length === 0 ? <p className="text-sm text-gray-500">{L.none}</p> : payments.map((p) => (
-              <Row
-                key={p.id}
-                left={p.amountStr}
-                right={p.dateStr}
+              <DeletableRow key={p.id} left={p.amountStr} right={p.dateStr}
                 sub={p.status === "unpaid" ? L.unpaid : p.status === "overdue" ? L.overdue : undefined}
-              />
+                action={deletePayment} idName="paymentId" id={p.id} deleteTitle={L.deleteEntry} confirmText={L.confirmDeleteEntry} />
             ))}
           </Group>
         </div>
@@ -975,9 +1003,10 @@ function ActionSubmit({ label, primary }: { label: string; primary?: boolean }) 
     </button>
   );
 }
-function MiniForm({ action, clientId, name, placeholder, button, numeric }: { action: (fd: FormData) => void; clientId: string; name: string; placeholder: string; button: string; numeric?: boolean }) {
+function MiniForm({ action, clientId, name, placeholder, button, numeric }: { action: (fd: FormData) => void | Promise<void>; clientId: string; name: string; placeholder: string; button: string; numeric?: boolean }) {
+  const ref = useRef<HTMLFormElement>(null);
   return (
-    <form action={action} className="flex gap-2">
+    <form ref={ref} action={async (fd) => { await action(fd); ref.current?.reset(); }} className="flex gap-2">
       <input type="hidden" name="clientId" value={clientId} />
       <input
         name={name}
@@ -988,6 +1017,52 @@ function MiniForm({ action, clientId, name, placeholder, button, numeric }: { ac
       />
       <MiniSubmit label={button} />
     </form>
+  );
+}
+
+/** Add-reminder with an optional date + time (native pickers). Blank date = the old "+3 days, 9 AM". */
+function ReminderForm({ clientId, labels: L }: { clientId: string; labels: Record<string, any> }) {
+  const ref = useRef<HTMLFormElement>(null);
+  return (
+    <form ref={ref} action={async (fd) => { await addReminderAction(fd); ref.current?.reset(); }} className="space-y-2">
+      <div className="flex gap-2">
+        <input type="hidden" name="clientId" value={clientId} />
+        <input
+          name="text"
+          aria-label={L.reminderTextPlaceholder}
+          placeholder={L.reminderTextPlaceholder}
+          className={`flex-1 rounded-lg border border-gray-200 px-3 ${TAP} text-sm focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand`}
+        />
+        <MiniSubmit label={L.addReminder} />
+      </div>
+      <div className="flex items-center gap-2 pl-1">
+        <span className="text-xs font-medium text-gray-500">{L.whenLabel}</span>
+        <input type="date" name="date" aria-label={L.whenLabel}
+          className={`${TAP} min-w-0 flex-1 rounded-lg border border-gray-200 px-2 text-sm text-gray-700 focus:border-brand focus:outline-none`} />
+        <input type="time" name="time" defaultValue="09:00"
+          className={`${TAP} rounded-lg border border-gray-200 px-2 text-sm text-gray-700 focus:border-brand focus:outline-none`} />
+      </div>
+    </form>
+  );
+}
+
+/** History row with a confirm-guarded delete button. */
+function DeletableRow({ left, right, sub, action, idName, id, deleteTitle, confirmText }: {
+  left: string; right: string; sub?: string | null;
+  action: (fd: FormData) => void | Promise<void>; idName: string; id: string; deleteTitle: string; confirmText: string;
+}) {
+  return (
+    <div className="flex items-center gap-2 border-b border-gray-50 pb-2 last:border-0 last:pb-0">
+      <div className="min-w-0 flex-1">
+        <div className="break-words text-sm text-gray-800">{left}</div>
+        {sub && <div className="text-xs text-gray-500">{sub}</div>}
+      </div>
+      <div className="shrink-0 text-xs text-gray-500">{right}</div>
+      <form action={action} onSubmit={(e) => { if (!window.confirm(confirmText)) e.preventDefault(); }}>
+        <input type="hidden" name={idName} value={id} />
+        <ReminderSubmit title={deleteTitle}><X className="h-4 w-4 text-gray-400" /></ReminderSubmit>
+      </form>
+    </div>
   );
 }
 function MiniSubmit({ label }: { label: string }) {

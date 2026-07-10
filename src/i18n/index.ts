@@ -142,6 +142,15 @@ const en = {
   stopsShort: (n: number) => `${n} stop${n === 1 ? "" : "s"}`,
   scheduledJob: "Job",
   reminderWord: "Reminder",
+  // edit form: service cadence + notes; drawer: entry management
+  howOften: "How often",
+  dayLabel: "Day",
+  whenLabel: "When",
+  intervalNone: "One-time / as needed",
+  intervalWeekly: "Weekly",
+  intervalBiweekly: "Every 2 weeks",
+  intervalMonthly: "Monthly",
+  confirmDeleteEntry: "Delete this entry?",
 };
 
 const es: Dict = {
@@ -269,6 +278,14 @@ const es: Dict = {
   stopsShort: (n: number) => `${n} parada${n === 1 ? "" : "s"}`,
   scheduledJob: "Trabajo",
   reminderWord: "Recordatorio",
+  howOften: "Cada cuánto",
+  dayLabel: "Día",
+  whenLabel: "Cuándo",
+  intervalNone: "Única vez / según se necesite",
+  intervalWeekly: "Semanal",
+  intervalBiweekly: "Cada 2 semanas",
+  intervalMonthly: "Mensual",
+  confirmDeleteEntry: "¿Borrar esta entrada?",
 };
 
 const DICTS: Record<Lang, Dict> = { en, es };
