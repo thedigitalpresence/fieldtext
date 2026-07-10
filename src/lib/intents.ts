@@ -33,7 +33,9 @@ export interface ActionSession {
   lang?: Lang; // per-phone language override
 }
 
-const PENDING_TTL_MS = 15 * 60 * 1000;
+// 6 hours: an operator working between houses answers a question long after we
+// asked it. 15 min was the top cause of "I answered but it forgot" reports.
+const PENDING_TTL_MS = 6 * 60 * 60 * 1000;
 function pendingExpiry(): string {
   return new Date(Date.now() + PENDING_TTL_MS).toISOString();
 }
@@ -204,33 +206,56 @@ export async function resolvePending(
       return runAction(business, action, ctx, null, session, lang, a);
     }
 
-    // Couldn't tell which — if the reply still reads like a pick attempt (a bare
-    // name, an address, a number), KEEP the question open and re-ask rather than
-    // dropping the whole request and answering it as something new.
-    if (/^[\p{L}\d][\p{L}\d .,'’#-]*$/u.test(a.trim())) {
+    // Couldn't tell which. A confident, unrelated command ("the smiths paid 200")
+    // must RUN, not be eaten as a failed pick. Only a genuinely pick-shaped reply
+    // (bare name / number / address, no command) re-asks and keeps the question.
+    const probe = heuristicParse(a, ctx).actions[0];
+    const isCommand = !!probe && probe.intent !== "help" && probe.confidence >= 0.55;
+    if (!isCommand && /^[\p{L}\d][\p{L}\d .,'’#-]*$/u.test(a.trim())) {
       session.pending = pending;
       const opts = cands.map((c, i) => `(${i + 1}) ${c.name}${c.address ? ` — ${c.address}` : ""}`).join("  ");
       return `${lang === "es" ? "Aún no sé cuál — " : "Still not sure which one — "}${t.whichClient(opts, lang)}`;
     }
-    return null; // clearly a new topic — let it parse fresh
+    return null; // a command or a new topic — let it parse fresh
   }
 
-  // "Whose site is this photo from?" — the reply names the client.
+  // "Whose site is this photo from?" — the reply names the client (or picks a
+  // number from a list we showed, or gives the address).
   if (pending.kind === "attach_photo") {
     if (/^\s*(import|importar)\s*[.!]?\s*$/i.test(a)) return t.photoHint(lang);
-    const found = await findClientInPhrase(business.id, a);
-    if (found) {
-      const saved = await saveMedia(business.id, found.id, pending.media ?? [], pending.action.note_text ?? null);
-      return saved > 0 ? t.photoSaved(saved, found.name, lang) : t.errorSaving(lang);
+    const saveTo = async (id: string, name: string) => {
+      const saved = await saveMedia(business.id, id, pending.media ?? [], pending.action.note_text ?? null);
+      return saved > 0 ? t.photoSaved(saved, name, lang) : t.errorSaving(lang);
+    };
+    // A numeric pick against a list we previously showed ("(1) Smiths (2) Smith Bros" → "2").
+    const ids = pending.candidateIds ?? [];
+    const numM = a.match(/^\(?\s*([1-9])\s*\)?\.?$/);
+    if (ids.length && numM) {
+      const picked = ids[Number(numM[1]) - 1];
+      const c = picked ? (await listClients(business.id)).find((x) => x.id === picked) : null;
+      if (c) return saveTo(c.id, c.name);
     }
-    const matches = await matchClientsScored(business.id, { name: a });
+    const found = await findClientInPhrase(business.id, a);
+    if (found) return saveTo(found.id, found.name);
+    // Match by name OR address, scored separately (a combined query would trip
+    // the full-name veto). "the oak street job" / "12 oak st" resolve by address.
+    const byName = await matchClientsScored(business.id, { name: a });
+    const byAddr = await matchClientsScored(business.id, { address: a });
+    const merged = new Map<string, { client: Client; score: number }>();
+    for (const m of [...byName, ...byAddr]) {
+      const cur = merged.get(m.client.id);
+      if (!cur || m.score > cur.score) merged.set(m.client.id, m);
+    }
+    const matches = [...merged.values()].sort((x, y) => y.score - x.score);
+    if (matches.length === 1 && matches[0].score >= STRONG_MATCH) return saveTo(matches[0].client.id, matches[0].client.name);
     if (matches.length > 1) {
-      session.pending = pending; // keep the photo waiting; a more specific name resolves it
+      // Keep the photo waiting AND remember the shortlist so "2" resolves next.
+      session.pending = { ...pending, candidateIds: matches.slice(0, 4).map((m) => m.client.id) };
       const opts = matches.slice(0, 4).map((m, i) => `(${i + 1}) ${m.client.name}${m.client.address ? ` — ${m.client.address}` : ""}`).join("  ");
       return t.whichClient(opts, lang);
     }
-    if (/^[a-zà-ÿ][a-zà-ÿ .'’-]{2,}$/i.test(a.trim())) {
-      // Unknown name — keep the photo waiting and say so.
+    if (/[a-zà-ÿ]{3,}|\d/i.test(a.trim())) {
+      // Looked like an answer (a name or address) but no match — keep waiting.
       session.pending = pending;
       return t.notFound(a.trim(), lang);
     }
@@ -241,7 +266,7 @@ export async function resolvePending(
     const candidateId = pending.candidateIds?.[0];
     // "yes" confirms — and so does naming the candidate ("yes, Eric Shackelford"
     // or just "Eric Shackelford"), which is what people naturally reply.
-    let confirms = /^\s*(yes|yeah|yep|yup|correct|that'?s (?:him|her|it|them)|s[ií]|claro|dale|ok|okay|exacto|correcto)\s*[.!]?\s*$/i.test(a);
+    let confirms = /^\s*(yes|yeah|yep|yup|correct|right|that'?s (?:him|her|it|them|the one|the guy|right)|s[ií]|s[ií] es (?:ella|[eé]l)|claro|dale|ok|okay|exacto|correcto)\s*[.!]?\s*$/i.test(a);
     if (!confirms && candidateId && /^(?:yes|s[ií])?[,\s]*[\p{L}][\p{L} .'’-]+$/u.test(a.trim())) {
       const cand = (await listClients(business.id)).find((c) => c.id === candidateId);
       if (cand) {
@@ -273,7 +298,7 @@ export async function resolvePending(
   }
 
   if (pending.kind === "confirm_create") {
-    if (/^\s*(yes|yeah|yep|s[ií]|dale|ok)\s*[.!]?\s*$/i.test(a)) {
+    if (/^\s*(yes|yeah|yep|yup|sure|ok|okay|correct|go ahead|please do|do it|add (?:them|him|her)|s[ií]|claro|dale|h[aá]zlo|agr[eé]gal[oa])\s*[.!]?\s*$/i.test(a)) {
       const p = pending.action;
       const client = await createClient(business.id, {
         name: p.client_name ?? "New client",
@@ -287,15 +312,15 @@ export async function resolvePending(
       const action: ParsedAction = { ...p, client_id: client.id, client_is_new: true };
       return runAction(business, action, ctx, null, session, lang, a);
     }
-    if (/^\s*(no|nah|nope)\s*[.!]?\s*$/i.test(a)) {
+    if (/^\s*(no|nah|nope|don'?t|cancel|skip|forget it|no lo agregues|no gracias)\s*[.!]?\s*$/i.test(a)) {
       return lang === "es" ? "Ok, no lo agregué." : "Ok, didn't add them.";
     }
     return null;
   }
 
   if (pending.kind === "missing_amount") {
-    // "don't know" / "not sure" / "skip" → save without a price and move on.
-    if (/^\s*(don'?t know|dunno|not sure|no idea|unsure|no clue|skip|later|tbd|n\/?a|no s[eé]|no estoy seguro|luego|despu[eé]s)\b/i.test(a)) {
+    // "don't know" / "idk" / "not sure" / "skip" → save without a price and move on.
+    if (/^\s*(idk|don'?t know|dunno|not sure|no idea|unsure|no clue|who knows|beats me|not yet|nope|nothing|skip|later|tbd|n\/?a|\?+|no s[eé]|no estoy seguro|ni idea|luego|despu[eé]s)\b/i.test(a)) {
       const clientId = pending.action.client_id;
       if (clientId) {
         const all = await listClients(business.id);
@@ -305,8 +330,18 @@ export async function resolvePending(
       return null;
     }
     const n = normalizeAmount(a);
-    if (n == null) return null; // not a number, not a skip → let it parse as its own thing
-    const action: ParsedAction = { ...pending.action, amount: n };
+    if (n == null) {
+      // Not a number and not a skip. If it's a real command, keep the price
+      // question open (sticky) and let the command run; else drop through.
+      const probe = heuristicParse(a, ctx).actions[0];
+      if (probe && probe.intent !== "help" && probe.intent !== "update_client_info" && probe.confidence >= 0.55) {
+        session.pending = pending;
+      }
+      return null;
+    }
+    // A period said with the price ("200 a month", "150/mo") sets billing too.
+    const period = normalizePeriod(a);
+    const action: ParsedAction = { ...pending.action, amount: n, ...(period ? { billing_period: period } : {}) };
     return runAction(business, action, ctx, null, session, lang, a);
   }
 
@@ -323,8 +358,13 @@ export async function resolvePending(
       /\b(paid|collected|owes?|venmo(?:ed|'d)?|zelled|remind me|invoice|receipt|spent|rained out)\b/i.test(a)
       // Accented words can't use a trailing \b (ó/é aren't word chars).
       || /(pag[oó]|cobr[eé]|deben|recu[eé]rdame|factura|recibo|llovi[oó]|gast[eé])/i.test(a)
-      || /^\s*(quoted|quoting|coti[a-zà-ÿ]*|new job|new client)\b/i.test(a);
-    if (looksLikeCommand) return null;
+      || /^\s*(quoted|quoting|coti[a-zà-ÿ]*|new job|new client)\b/i.test(a)
+      // A correction aimed at a PRIOR entry, not an answer to this question.
+      || /^\s*(fix|wrong|actually|corrige|cambia|en realidad)\b/i.test(a)
+      || /\bit'?s\s+[\d.,$kK]+\s+not\s+[\d.,$kK]+/i.test(a);
+    // Sticky: run the command, but KEEP chasing the intake so the operator's next
+    // contact-info reply still lands (no more silently-abandoned half-setups).
+    if (looksLikeCommand) { session.pending = pending; return null; }
 
     // Recurring-service scheduling step: "when does it start, how often, what day?"
     if (missing.length === 1 && missing[0] === "schedule") {
@@ -350,6 +390,11 @@ export async function resolvePending(
       const sched = parseScheduleAnswer(a, ctx.nowISO);
       if (!sched.service_interval && !sched.next_service_on) {
         return t.needSchedule(target.name, lang); // couldn't read it — ask once more
+      }
+      // A start date with no stated cadence ("the 15th") inherits the billing
+      // period, so the calendar still advances instead of stalling.
+      if (sched.next_service_on && !sched.service_interval && target.billing_period && ["weekly", "biweekly", "monthly"].includes(target.billing_period)) {
+        sched.service_interval = target.billing_period as "weekly" | "biweekly" | "monthly";
       }
       const saved = (await updateClient(clientId, sched)) ?? target;
       const when = [
@@ -403,8 +448,11 @@ export async function resolvePending(
     }
     rest = rest.replace(/^[,;·-]+|[,;·-]+$/g, "").trim();
     if (rest) {
-      // Leftover with a digit → address; otherwise → the service.
-      if (missing.includes("address") && /\d/.test(rest)) {
+      // A house number OR a street word ("Main Street", "Elm Ct") means address —
+      // so a digit-less street isn't misfiled as the service.
+      const looksStreet = /\d/.test(rest)
+        || /\b(st|street|ave|avenue|rd|road|ln|lane|dr|drive|blvd|boulevard|ct|court|way|pl|place|cir|circle|hwy|highway|apt|suite|ste|unit|calle|avenida)\b/i.test(rest);
+      if (missing.includes("address") && looksStreet) {
         patch.address = normalizeAddress(rest);
       } else if (missing.includes("service")) {
         patch.service_description = rest.toLowerCase();

@@ -220,6 +220,10 @@ export const t = {
     lang === "es"
       ? "📸 ¿De qué cliente es esta foto? Responde con el nombre — o IMPORTAR si es una lista de clientes."
       : "📸 Whose site is this photo from? Reply with the client name — or IMPORT if it's a client list to load.",
+  photoAfterAnswer: (lang: Lang) =>
+    lang === "es"
+      ? "📸 Recibí tu foto. Primero responde mi pregunta de arriba, y vuelve a enviarla para guardarla."
+      : "📸 Got your photo. Answer my question above first, then send it again and I'll file it.",
   photoSaved: (count: number, name: string, lang: Lang) =>
     lang === "es"
       ? `Guardé ${count > 1 ? `${count} fotos` : "la foto"} en la ficha de ${name} 📸 — la ves en tu panel.`

@@ -126,17 +126,27 @@ export async function handleInbound(params: InboundParams): Promise<InboundOutco
   if ((params.numMedia ?? 0) > 0 && media.length > 0) {
     const inId = await logMessage({ businessId: business.id, direction: "inbound", fromPhone: fromE164, body: body || "(photo)", intent: "photo", externalId: params.messageSid });
     await logSms(business, { direction: "inbound", body: body || "(photo)", messageId: inId });
-    // If we're mid-conversation about a specific client (an intake in progress),
-    // the photo is THEIRS — attach it and keep the intake going, instead of
-    // resetting to "whose site is this?". This is the blanket context fix.
-    const focusId = focusedClientId(authPhone.pending_state as PendingState | null);
+    const pend = authPhone.pending_state as PendingState | null;
+    const pendLive = pend && new Date(pend.expiresAt).getTime() >= Date.now() ? pend : null;
+    // If we're mid-conversation about a specific client (an intake in progress,
+    // a missing price, or the quote close-loop), the photo is THEIRS — attach it
+    // and keep the conversation going, instead of resetting to "whose site?".
+    const focusId = focusedClientId(pendLive);
     let reply: string;
     if (focusId) {
       const saved = await saveMedia(business.id, focusId, media, body || null);
       const c = (await listClients(business.id)).find((x) => x.id === focusId);
       reply = saved > 0 && c ? t.photoSaved(saved, c.name, lang) : t.errorSaving(lang);
-      // pending_state is intentionally LEFT INTACT — the intake question still
-      // stands, so the operator's next text ("gate code 1187") still answers it.
+      // pending_state is intentionally LEFT INTACT — the open question still stands.
+    } else if (pendLive && pendLive.kind === "attach_photo") {
+      // A second photo before we know whose it is — add it to the batch, keep asking.
+      const merged = [...(pendLive.media ?? []), ...media].slice(0, 10);
+      await db().from("authorized_phones").update({ pending_state: { ...pendLive, media: merged } }).eq("id", authPhone.id);
+      reply = t.photoWho(lang);
+    } else if (pendLive && (pendLive.kind === "which_client" || pendLive.kind === "confirm_match" || pendLive.kind === "confirm_create")) {
+      // An open question we can't attach to yet — DON'T wipe it. Ask them to
+      // answer first and resend, so the pending (and its action) survives.
+      reply = t.photoAfterAnswer(lang);
     } else {
       reply = await handlePhoto(business, authPhone.id, media, body, lang);
     }
@@ -240,7 +250,9 @@ export async function handleInbound(params: InboundParams): Promise<InboundOutco
 function focusedClientId(pending: PendingState | null): string | null {
   if (!pending) return null;
   if (new Date(pending.expiresAt).getTime() < Date.now()) return null;
-  if (pending.kind === "complete_client" || pending.kind === "missing_amount") {
+  // These all pin a single, known client: an intake, a missing price, or the
+  // quote close-loop. A photo during any of them belongs to that client.
+  if (pending.kind === "complete_client" || pending.kind === "missing_amount" || pending.kind === "quote_status") {
     return pending.action?.client_id ?? null;
   }
   return null;

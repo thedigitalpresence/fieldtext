@@ -484,6 +484,106 @@ test("G10: a custom time on the reply ('remind me friday') is honored", async ()
   assert.equal((await getClient("Jane Doe"))!.status, "quoted");
 });
 
+// ── G11: memory / context-drop edge cases (from the deep audit) ───────────────
+test("G11: missing-amount 'idk' saves the quote priceless and keeps the intake going", async () => {
+  await reset([]);
+  await say("quoted Nadia for mowing");            // no price → asks amount
+  const reply = await say("idk");                   // must be a skip, not a drop
+  assert.match(reply, /address|phone|what'?s/i, `keeps chasing profile → "${reply}"`);
+  const c = await getClient("Nadia");
+  assert.ok(c, "Nadia saved");
+  assert.equal(c!.amount ?? null, null, "no price invented");
+});
+
+test("G11: '200 a month' answer to the price question sets amount AND billing period", async () => {
+  await reset([]);
+  await say("quoted Nadia at 5 oak st for mowing"); // has address+service, no price
+  await say("200 a month");
+  const c = await getClient("Nadia");
+  assert.equal(Number(c!.amount), 200, "amount captured");
+  assert.equal(c!.billing_period, "monthly", "period captured, not dropped (MRR stays right)");
+});
+
+test("G11: a digit-less street answer is the ADDRESS, not the service", async () => {
+  await reset([]);
+  await say("quoted Jorah for $100");   // missing address, phone, service
+  await say("555-123-4567");            // phone → still missing address + service
+  const reply = await say("Main Street"); // must be address, not service
+  const c = await getClient("Jorah");
+  assert.match(String(c!.address), /Main St/i, "street saved as address");
+  assert.ok(!/main/i.test(String(c!.service_description ?? "")), "not misfiled as service");
+  assert.match(reply, /service|what'?s/i, `still chases the service → "${reply}"`);
+});
+
+test("G11: a command mid-intake runs AND the intake survives (sticky)", async () => {
+  await reset(FULL_BOOK);
+  await say("quoted Petyr for $200 mowing");   // new client, chases address+phone
+  const cmd = await say("dee garcia paid 100"); // unrelated command
+  assert.match(cmd, /Dee Garcia/i, `the payment runs → "${cmd}"`);
+  const done = await say("5 oak st 555-123-4567"); // intake still open → completes
+  assert.match(done, /Saved|5 Oak|555/i, `intake survived the interruption → "${done}"`);
+  const petyr = await getClient("Petyr");
+  assert.match(String(petyr!.address), /5 Oak/i, "address landed after the interleaved command");
+});
+
+test("G11: which-one? interleaved command runs instead of being eaten", async () => {
+  await reset([
+    { name: "Elena Shackelford", address: "9 Pine Rd" },
+    { name: "Eric Shackelford", address: "3 Ash Ct" },
+    { name: "The Smiths", address: "12 Oak St" },
+  ]);
+  await say("shackelford owes 450");        // ambiguous → which one?
+  const pay = await say("the smiths paid 200"); // a real, different command
+  assert.match(pay, /Smiths/i, `the Smiths payment records, not swallowed → "${pay}"`);
+  const { data: pays } = await db().from("payments").select("*");
+  assert.ok((pays as unknown[]).length >= 1, "payment recorded");
+});
+
+test("G11: photo answered by a NUMBER after a shortlist attaches to that choice", async () => {
+  await reset([
+    { name: "The Smiths", address: "12 Oak St" },
+    { name: "Smith Brothers", address: "8 Elm St" },
+  ]);
+  await sayPhoto("");            // no caption → whose site?
+  const list = await say("smith");
+  assert.match(list, /\(1\)|\(2\)|which/i, `shows the shortlist → "${list}"`);
+  const done = await say("2");
+  assert.match(done, /Saved.*photo|Smith/i, `numeric pick attaches → "${done}"`);
+  const { data: atts } = await db().from("attachments").select("*");
+  assert.equal((atts as unknown[]).length, 1, "exactly one photo saved");
+});
+
+test("G11: photo answered by ADDRESS attaches to that client", async () => {
+  await reset([{ name: "The Smiths", address: "12 Oak St" }]);
+  await sayPhoto("");
+  const done = await say("12 oak st");
+  assert.match(done, /Saved.*photo|Smiths/i, `address resolves the photo → "${done}"`);
+  const { data: atts } = await db().from("attachments").select("*");
+  assert.equal((atts as unknown[]).length, 1);
+});
+
+test("G11: a photo during 'which one?' does NOT wipe the pending", async () => {
+  await reset([
+    { name: "Elena Shackelford", address: "9 Pine Rd" },
+    { name: "Eric Shackelford", address: "3 Ash Ct" },
+  ]);
+  await say("shackelford owes 450");   // which one?
+  const onPhoto = await sayPhoto("");   // photo mid-question
+  assert.doesNotMatch(onPhoto, /whose site/i, "must not reset to 'whose site?'");
+  assert.match(onPhoto, /answer|question|first/i, `asks to finish first → "${onPhoto}"`);
+  const done = await say("1");           // the which-one? survived
+  assert.doesNotMatch(done, /which/i, "the pending was still there to resolve");
+});
+
+test("G11: confirm-create accepts natural yeses ('yup', 'okay', 'sure')", async () => {
+  for (const yes of ["yup", "okay", "sure"]) {
+    await reset(FULL_BOOK);
+    await say(`mowed ${yes === "yup" ? "Zed" : yes === "okay" ? "Yara" : "Wex"}`); // unknown → add them?
+    const created = await say(yes);
+    assert.doesNotMatch(created, /didn'?t add|add them\?/i, `"${yes}" should confirm → "${created}"`);
+  }
+});
+
 // ── G8c: a photo mid-intake attaches to the client in focus (context kept) ────
 async function sayPhoto(body: string): Promise<string> {
   SID++;
