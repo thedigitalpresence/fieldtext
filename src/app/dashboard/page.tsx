@@ -2,8 +2,9 @@ import { db, currentBusiness, currentSession, listBusinesses, getPrimaryPhone } 
 import { dict } from "@/i18n";
 import { businessLang, money, periodLabel } from "@/lib/templates";
 import { monthlyEquivalent } from "@/lib/intents";
-import { totalOutstanding, openBalances } from "@/lib/charges";
+import { totalOutstanding, openBalances, nextCycleDate } from "@/lib/charges";
 import { listPhotos } from "@/lib/attachments";
+import { getForecast, type DayWeather } from "@/lib/weather";
 import DashboardClient from "./DashboardClient";
 import type { Client, Job, Payment, Reminder, Message, Lang } from "@/lib/types";
 
@@ -61,7 +62,7 @@ function activityText(m: Message, lang: Lang): string {
   }
 }
 
-export default async function DashboardPage({ searchParams }: { searchParams?: { imported?: string } }) {
+export default async function DashboardPage({ searchParams }: { searchParams?: { imported?: string; cityerr?: string } }) {
   const business = await currentBusiness();
   const session = await currentSession();
   const importedCount = Number(searchParams?.imported ?? 0) || 0;
@@ -73,10 +74,11 @@ export default async function DashboardPage({ searchParams }: { searchParams?: {
   const lang = businessLang(business);
   const d = dict(lang);
 
-  const [{ data: clientRows }, { data: jobRows }, { data: payRows }, { data: remRows }, { data: msgRows }, primary] =
+  const [{ data: clientRows }, { data: jobRows }, { data: schedJobRows }, { data: payRows }, { data: remRows }, { data: msgRows }, primary] =
     await Promise.all([
       db().from("clients").select("*").eq("business_id", bid).order("updated_at", { ascending: false }),
       db().from("jobs").select("*").eq("business_id", bid).order("performed_on", { ascending: false }).limit(30),
+      db().from("jobs").select("*").eq("business_id", bid).eq("status", "scheduled"),
       db().from("payments").select("*").eq("business_id", bid).order("created_at", { ascending: false }).limit(30),
       db().from("reminders").select("*").eq("business_id", bid).eq("status", "pending").order("due_at", { ascending: true }),
       db().from("messages").select("*").eq("business_id", bid).eq("direction", "inbound").order("created_at", { ascending: false }).limit(30),
@@ -85,6 +87,7 @@ export default async function DashboardPage({ searchParams }: { searchParams?: {
 
   const clients = (clientRows ?? []) as Client[];
   const jobs = (jobRows ?? []) as Job[];
+  const schedJobs = (schedJobRows ?? []) as Job[];
   const payments = (payRows ?? []) as Payment[];
   const reminders = (remRows ?? []) as Reminder[];
   const messages = (msgRows ?? []) as Message[];
@@ -100,24 +103,93 @@ export default async function DashboardPage({ searchParams }: { searchParams?: {
   const outstanding = await totalOutstanding(bid);
   const scheduledThisWeek = active.filter((c) => c.next_service_on && new Date(c.next_service_on + "T00:00:00").getTime() <= weekEnd).length;
 
-  // ── Today focus strip: services + reminders due today (or overdue) ──────────
+  // ── Schedule: 42 days of stops, jobs, reminders — plus weather when a city is set ──
   const tz = business.timezone || "America/New_York";
   const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: tz }); // YYYY-MM-DD
-  const todayServices = active
-    .filter((c) => c.next_service_on && c.next_service_on <= todayStr)
-    .map((c) => ({ id: c.id, name: c.name, address: c.address, overdue: (c.next_service_on as string) < todayStr }))
-    .sort((a, b) => Number(b.overdue) - Number(a.overdue));
-  const todayReminders = reminders
-    .filter((r) => new Date(r.due_at).toLocaleDateString("en-CA", { timeZone: tz }) <= todayStr)
-    .map((r) => ({
+  const HORIZON = 42; // six full weeks — covers "this month" from any day
+  const addDays = (ymd: string, n: number) => {
+    const [y, m, dd] = ymd.split("-").map(Number);
+    return new Date(Date.UTC(y, m - 1, dd + n)).toISOString().slice(0, 10);
+  };
+  const endStr = addDays(todayStr, HORIZON - 1);
+  const weekdayNum = (ymd: string) => new Date(ymd + "T00:00:00Z").getUTCDay(); // 0=Sun
+  const DAY_NUM: Record<string, number> = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
+
+  type SvcItem = { id: string; name: string; address: string | null; overdue: boolean };
+  const svcByDate = new Map<string, SvcItem[]>();
+  const pushSvc = (date: string, item: SvcItem) => (svcByDate.get(date) ?? svcByDate.set(date, []).get(date)!).push(item);
+  for (const c of active) {
+    const item = { id: c.id, name: c.name, address: c.address, overdue: false };
+    if (c.next_service_on) {
+      // Overdue visits surface on TODAY; then project the recurring cadence forward.
+      let d0 = c.next_service_on;
+      if (d0 < todayStr) {
+        pushSvc(todayStr, { ...item, overdue: true });
+        if (!c.service_interval) continue;
+        while (d0 < todayStr) d0 = nextCycleDate(d0, c.service_interval);
+        if (d0 === todayStr) d0 = nextCycleDate(d0, c.service_interval); // today already shown as overdue
+      }
+      for (let d = d0, guard = 0; d <= endStr && guard < 60; guard++) {
+        pushSvc(d, item);
+        if (!c.service_interval) break;
+        d = nextCycleDate(d, c.service_interval);
+      }
+    } else if (c.service_day && c.service_day in DAY_NUM) {
+      // No concrete next date, but a weekly route day — show them on that day each week.
+      let d = addDays(todayStr, (DAY_NUM[c.service_day] - weekdayNum(todayStr) + 7) % 7);
+      for (let guard = 0; d <= endStr && guard < 8; guard++, d = addDays(d, 7)) pushSvc(d, item);
+    }
+  }
+  for (const list of svcByDate.values()) list.sort((a, b) => Number(b.overdue) - Number(a.overdue));
+
+  const jobsByDate = new Map<string, { id: string; description: string; who: string | null }[]>();
+  for (const j of schedJobs) {
+    if (!j.scheduled_on) continue;
+    const date = j.scheduled_on < todayStr ? todayStr : j.scheduled_on; // stale scheduled jobs surface today
+    if (date > endStr) continue;
+    (jobsByDate.get(date) ?? jobsByDate.set(date, []).get(date)!).push({
+      id: j.id, description: j.description, who: j.client_id ? nameOf(j.client_id) : null,
+    });
+  }
+
+  type RemItem = { id: string; clientId: string | null; text: string; who: string | null; overdue: boolean };
+  const remByDate = new Map<string, RemItem[]>();
+  for (const r of reminders) {
+    const due = new Date(r.due_at).toLocaleDateString("en-CA", { timeZone: tz });
+    const date = due < todayStr ? todayStr : due;
+    if (date > endStr) continue;
+    (remByDate.get(date) ?? remByDate.set(date, []).get(date)!).push({
       id: r.id, clientId: r.client_id, text: r.text,
-      who: r.client_id ? nameOf(r.client_id) : null,
-      overdue: new Date(r.due_at).toLocaleDateString("en-CA", { timeZone: tz }) < todayStr,
-    }));
-  const todayStrip = {
-    dateStr: new Date(todayStr + "T00:00:00").toLocaleDateString(lang === "es" ? "es-ES" : "en-US", { weekday: "long", month: "short", day: "numeric" }),
-    services: todayServices,
-    reminders: todayReminders,
+      who: r.client_id ? nameOf(r.client_id) : null, overdue: due < todayStr,
+    });
+  }
+
+  // Weather (optional): city geocoded once at set-time; forecast covers ≤16 days.
+  let weatherByDate = new Map<string, DayWeather>();
+  const { lat, lon } = business.settings ?? {};
+  if (typeof lat === "number" && typeof lon === "number") {
+    const fc = await getForecast(lat, lon, tz, lang).catch(() => [] as DayWeather[]);
+    weatherByDate = new Map(fc.map((w) => [w.date, w]));
+  }
+
+  const locale = lang === "es" ? "es-ES" : "en-US";
+  const schedule = {
+    city: business.settings?.city ?? null,
+    cityErr: searchParams?.cityerr === "1",
+    days: Array.from({ length: HORIZON }, (_, i) => {
+      const date = addDays(todayStr, i);
+      const dt = new Date(date + "T00:00:00");
+      return {
+        date,
+        isToday: i === 0,
+        weekdayStr: dt.toLocaleDateString(locale, { weekday: "long" }),
+        dateShort: dt.toLocaleDateString(locale, { month: "short", day: "numeric" }),
+        weather: weatherByDate.get(date) ?? null,
+        services: svcByDate.get(date) ?? [],
+        jobs: jobsByDate.get(date) ?? [],
+        reminders: remByDate.get(date) ?? [],
+      };
+    }),
   };
 
   // Group quote follow-ups + earliest-next per client.
@@ -232,6 +304,11 @@ export default async function DashboardPage({ searchParams }: { searchParams?: {
     importClients: d.importClients, firstRunTitle: d.firstRunTitle, firstRunBody: d.firstRunBody,
     today: d.today, allClearToday: d.allClearToday, serviceDue: d.serviceDue,
     unscheduled: d.unscheduled, weekdays,
+    colName: d.colName, colPeriod: d.colPeriod,
+    setCity: d.setCity, cityPlaceholder: d.cityPlaceholder, cityNotFound: d.cityNotFound,
+    calendarView: d.calendarView, dayView: d.dayView, backToToday: d.backToToday,
+    nothingThatDay: d.nothingThatDay, prevDay: d.prevDay, nextDay: d.nextDay,
+    scheduledJob: d.scheduledJob, reminderWord: d.reminderWord,
     exportCsv: d.exportCsv, phoneLabel: d.phoneLabel, emailLabel: d.emailLabel,
     pausedUntil: d.pausedUntil, pausedGroup: d.pausedGroup, confirmDecline: d.confirmDecline,
     photos: d.photos,
@@ -257,7 +334,7 @@ export default async function DashboardPage({ searchParams }: { searchParams?: {
         outstanding: outstanding > 0 ? money(Math.round(outstanding)) : null,
         scheduledThisWeek,
       }}
-      today={todayStrip}
+      schedule={schedule}
       admin={admin}
       photos={photos}
       outstanding={outstandingList}

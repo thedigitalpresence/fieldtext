@@ -21,6 +21,9 @@ export interface BusinessSettings {
   last_monthly_summary?: string; // YYYY-MM guard
   last_season_nudge?: string; // YYYY-MM guard (Feb/Sep booking nudges)
   referral_code?: string; // keyword for "text CODE to join" referral line
+  city?: string; // display label for the forecast location ("Portland, Oregon")
+  lat?: number; // geocoded once when the city is set
+  lon?: number;
 }
 
 /** Conversation memory: the pending question the next inbound text may answer. */

@@ -173,6 +173,26 @@ export async function setLanguage(formData: FormData) {
   revalidatePath("/dashboard");
 }
 
+/** Set (or clear) the forecast city. Geocoded once here; lat/lon ride in settings. */
+export async function setCity(formData: FormData) {
+  const b = await currentBusiness();
+  const city = String(formData.get("city") ?? "").trim().slice(0, 80);
+  const settings = { ...(b.settings ?? {}) };
+  if (!city) {
+    delete settings.city; delete settings.lat; delete settings.lon;
+    await db().from("businesses").update({ settings }).eq("id", b.id);
+    revalidatePath("/dashboard");
+    return;
+  }
+  const { geocodeCity } = await import("@/lib/weather");
+  const geo = await geocodeCity(city);
+  if (!geo) redirect("/dashboard?cityerr=1");
+  await db().from("businesses").update({
+    settings: { ...settings, city: geo.label, lat: geo.lat, lon: geo.lon },
+  }).eq("id", b.id);
+  revalidatePath("/dashboard");
+}
+
 export async function markStatus(formData: FormData) {
   const clientId = String(formData.get("clientId"));
   const status = String(formData.get("status")) as ClientStatus;

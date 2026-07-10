@@ -128,6 +128,20 @@ const en = {
   deleteEntry: "Delete",
   confirmVoid: "Clear this balance? (they no longer owe it)",
   editClientLabel: "Edit details",
+  // schedule navigator + weather
+  setCity: "Set city",
+  cityPlaceholder: "Your city, e.g. Portland",
+  cityNotFound: "Couldn't find that city — try adding the state, e.g. \"Salem, Oregon\".",
+  calendarView: "Calendar",
+  dayView: "Day",
+  backToToday: "Today",
+  nothingThatDay: "Nothing scheduled this day.",
+  allClearDay: "Nothing scheduled.",
+  prevDay: "Previous day",
+  nextDay: "Next day",
+  stopsShort: (n: number) => `${n} stop${n === 1 ? "" : "s"}`,
+  scheduledJob: "Job",
+  reminderWord: "Reminder",
 };
 
 const es: Dict = {
@@ -242,6 +256,19 @@ const es: Dict = {
   deleteEntry: "Borrar",
   confirmVoid: "¿Borrar este saldo? (ya no lo deben)",
   editClientLabel: "Editar datos",
+  setCity: "Fijar ciudad",
+  cityPlaceholder: "Tu ciudad, p. ej. Portland",
+  cityNotFound: "No encontré esa ciudad — agrega el estado, p. ej. \"Salem, Oregon\".",
+  calendarView: "Calendario",
+  dayView: "Día",
+  backToToday: "Hoy",
+  nothingThatDay: "Nada programado este día.",
+  allClearDay: "Nada programado.",
+  prevDay: "Día anterior",
+  nextDay: "Día siguiente",
+  stopsShort: (n: number) => `${n} parada${n === 1 ? "" : "s"}`,
+  scheduledJob: "Trabajo",
+  reminderWord: "Recordatorio",
 };
 
 const DICTS: Record<Lang, Dict> = { en, es };

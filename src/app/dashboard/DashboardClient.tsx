@@ -7,12 +7,13 @@ import Link from "next/link";
 import {
   FileText, UserCheck, Briefcase, DollarSign, Bell, MessageCircle, Languages,
   CalendarClock, Search, X, Check, Clock, Ban, Upload, Sun, Leaf, TrendingUp, AlertCircle,
-  Download, Loader2, ChevronRight, Phone, PauseCircle, Pencil, Users,
+  Download, Loader2, ChevronRight, ChevronLeft, Phone, PauseCircle, Pencil, Users,
+  CalendarDays, MapPin,
 } from "lucide-react";
 import type { ClientStatus, Lang } from "@/lib/types";
 import {
   logout, setLanguage, markStatus, addNote, addReminderAction, logPayment, reminderAction,
-  editClient, settleBalance, voidBalance, switchBusiness,
+  editClient, settleBalance, voidBalance, switchBusiness, setCity,
 } from "./actions";
 
 const STATUS_COLOR: Record<ClientStatus, string> = {
@@ -44,6 +45,13 @@ type Activity = { id: string; kind: string; text: string; rel: string; exact: st
 type JobView = { id: string; clientId: string | null; description: string; dateStr: string; who: string | null };
 type PayView = { id: string; clientId: string | null; amountStr: string; dateStr: string; who: string | null; status: string };
 type RemView = { id: string; clientId: string | null; text: string; dateStr: string; kind: string };
+type DayView = {
+  date: string; isToday: boolean; weekdayStr: string; dateShort: string;
+  weather: { emoji: string; label: string; hi: number; lo: number; precip: number | null } | null;
+  services: { id: string; name: string; address: string | null; overdue: boolean }[];
+  jobs: { id: string; description: string; who: string | null }[];
+  reminders: { id: string; clientId: string | null; text: string; who: string | null; overdue: boolean }[];
+};
 
 interface Props {
   businessName: string;
@@ -51,11 +59,7 @@ interface Props {
   lang: Lang;
   labels: Record<string, any>;
   kpis: { mrr: string; openQuotes: number; potential: string | null; remindersThisWeek: number; activeClients: number; outstanding: string | null; scheduledThisWeek: number };
-  today: {
-    dateStr: string;
-    services: { id: string; name: string; address: string | null; overdue: boolean }[];
-    reminders: { id: string; clientId: string | null; text: string; who: string | null; overdue: boolean }[];
-  };
+  schedule: { city: string | null; cityErr: boolean; days: DayView[] };
   photos: { id: string; clientId: string | null; url: string; caption: string | null }[];
   outstanding: { clientId: string | null; name: string; amountStr: string; dueStr: string }[];
   admin: { currentId: string; businesses: { id: string; name: string }[] } | null;
@@ -276,58 +280,12 @@ export default function DashboardClient(props: Props) {
         </Link>
       )}
 
-      {/* Today hero */}
-      {(() => {
-        const count = props.today.services.length + props.today.reminders.length;
-        return (
-          <section className="overflow-hidden rounded-2xl shadow-sm ring-1 ring-brand/20">
-            <div className="flex items-center gap-3 bg-gradient-to-r from-brand to-brand-dark px-4 py-3 text-white">
-              <Sun className="h-6 w-6 shrink-0" />
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-bold uppercase tracking-wide leading-tight">{L.today}</p>
-                <p className="text-xs capitalize text-white/90">{props.today.dateStr}</p>
-              </div>
-              {count > 0 && (
-                <span className="shrink-0 rounded-full bg-white/20 px-2.5 py-1 text-sm font-bold tabular-nums">{count}</span>
-              )}
-            </div>
-            {count === 0 ? (
-              <div className="flex items-center gap-2 bg-white px-4 py-4 text-sm text-gray-500">
-                <Check className="h-4 w-4 text-brand" />{L.allClearToday}
-              </div>
-            ) : (
-              <ul className="divide-y divide-gray-50 bg-white">
-                {props.today.services.map((s) => (
-                  <li key={`s-${s.id}`}>
-                    <button onClick={() => setSelectedId(s.id)} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-brand/5">
-                      <Avatar name={s.name} />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate font-semibold text-gray-900">{s.name}</span>
-                        <span className="block truncate text-xs text-gray-500">{s.address || L.serviceDue}</span>
-                      </span>
-                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${s.overdue ? "bg-red-100 text-red-700" : "bg-brand/10 text-brand-dark"}`}>
-                        {s.overdue ? L.overdue : L.serviceDue}
-                      </span>
-                    </button>
-                  </li>
-                ))}
-                {props.today.reminders.map((r) => (
-                  <li key={`r-${r.id}`}>
-                    <button onClick={() => r.clientId && setSelectedId(r.clientId)} disabled={!r.clientId} className="flex w-full items-center gap-3 px-4 py-3 text-left enabled:hover:bg-brand/5">
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100"><Bell className="h-4 w-4 text-amber-600" /></span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block break-words font-semibold text-gray-900">{r.text}</span>
-                        {r.who && <span className="block truncate text-xs text-gray-500">{r.who}</span>}
-                      </span>
-                      {r.overdue && <span className="shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">{L.overdue}</span>}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        );
-      })()}
+      {/* Schedule hero — today by default, browse any day, or flip to the calendar */}
+      <ScheduleHero
+        schedule={props.schedule}
+        labels={L}
+        onSelectClient={(id) => setSelectedId(id)}
+      />
 
       {/* KPIs — 2x2 on mobile, 4 across on desktop (hidden until the book has clients) */}
       {props.clients.length > 0 && (
@@ -559,6 +517,192 @@ export default function DashboardClient(props: Props) {
   );
 }
 
+/**
+ * The schedule hero: one day at a time (arrows to browse, weather when a city
+ * is set) or a six-week calendar grid. Today always shows overdue work first.
+ */
+function ScheduleHero({
+  schedule, labels: L, onSelectClient,
+}: {
+  schedule: { city: string | null; cityErr: boolean; days: DayView[] };
+  labels: Record<string, any>;
+  onSelectClient: (id: string) => void;
+}) {
+  const [idx, setIdx] = useState(0);
+  const [view, setView] = useState<"day" | "cal">("day");
+  const [editingCity, setEditingCity] = useState(schedule.cityErr);
+  const days = schedule.days;
+  const day = days[Math.min(idx, days.length - 1)];
+  const count = day.services.length + day.jobs.length + day.reminders.length;
+
+  // Calendar layout: pad the 42-day window to full Monday-first weeks.
+  const lead = (new Date(days[0].date + "T00:00:00").getDay() + 6) % 7;
+  const cells: (DayView | null)[] = [...Array(lead).fill(null), ...days];
+  while (cells.length % 7 !== 0) cells.push(null);
+  const weekdayShort = (key: string) => String(L.weekdays?.[key] ?? key).slice(0, 3);
+
+  return (
+    <section className="overflow-hidden rounded-2xl shadow-sm ring-1 ring-brand/20">
+      {/* Gradient header: day nav + weather + view toggle */}
+      <div className="bg-gradient-to-r from-brand to-brand-dark px-3 py-3 text-white sm:px-4">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => { setView("day"); setIdx((i) => Math.max(0, i - 1)); }}
+            disabled={idx === 0 && view === "day"}
+            aria-label={L.prevDay}
+            className={`${TAP} min-w-[40px] rounded-lg p-1.5 hover:bg-white/15 disabled:opacity-30`}
+          >
+            <ChevronLeft className="mx-auto h-5 w-5" />
+          </button>
+          <div className="min-w-0 flex-1 text-center">
+            <p className="text-sm font-bold uppercase tracking-wide leading-tight">
+              {day.isToday ? L.today : day.weekdayStr}
+            </p>
+            <p className="text-xs capitalize text-white/90">{day.isToday ? `${day.weekdayStr}, ${day.dateShort}` : day.dateShort}</p>
+          </div>
+          <button
+            onClick={() => { setView("day"); setIdx((i) => Math.min(days.length - 1, i + 1)); }}
+            disabled={idx >= days.length - 1 && view === "day"}
+            aria-label={L.nextDay}
+            className={`${TAP} min-w-[40px] rounded-lg p-1.5 hover:bg-white/15 disabled:opacity-30`}
+          >
+            <ChevronRight className="mx-auto h-5 w-5" />
+          </button>
+        </div>
+        <div className="mt-2 flex flex-wrap items-center justify-center gap-1.5 text-xs">
+          {day.weather ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1 font-medium">
+              <span aria-hidden>{day.weather.emoji}</span>
+              <span>{day.weather.label}</span>
+              <span className="tabular-nums">{day.weather.hi}°/{day.weather.lo}°</span>
+              {day.weather.precip != null && day.weather.precip >= 30 && (
+                <span className="tabular-nums text-white/90">💧{day.weather.precip}%</span>
+              )}
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1"><Sun className="h-3.5 w-3.5" /></span>
+          )}
+          <button
+            onClick={() => setEditingCity((v) => !v)}
+            className="inline-flex items-center gap-1 rounded-full bg-white/15 px-2.5 py-1 font-medium hover:bg-white/25"
+          >
+            <MapPin className="h-3.5 w-3.5" />{schedule.city ?? L.setCity}
+          </button>
+          {!day.isToday && (
+            <button onClick={() => { setIdx(0); setView("day"); }} className="rounded-full bg-white/15 px-2.5 py-1 font-semibold hover:bg-white/25">
+              {L.backToToday}
+            </button>
+          )}
+          <button
+            onClick={() => setView((v) => (v === "day" ? "cal" : "day"))}
+            aria-pressed={view === "cal"}
+            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 font-medium ${view === "cal" ? "bg-white text-brand-dark" : "bg-white/15 hover:bg-white/25"}`}
+          >
+            <CalendarDays className="h-3.5 w-3.5" />{L.calendarView}
+          </button>
+          {view === "day" && count > 0 && (
+            <span className="rounded-full bg-white/20 px-2.5 py-1 font-bold tabular-nums">{count}</span>
+          )}
+        </div>
+      </div>
+
+      {/* City form */}
+      {editingCity && (
+        <form action={setCity} onSubmit={() => setEditingCity(false)} className="flex items-center gap-2 border-b border-gray-100 bg-white px-4 py-3">
+          <MapPin className="h-4 w-4 shrink-0 text-gray-500" />
+          <input
+            name="city"
+            defaultValue={schedule.city ?? ""}
+            placeholder={L.cityPlaceholder}
+            autoFocus
+            className={`${TAP} min-w-0 flex-1 rounded-lg border border-gray-200 px-3 text-sm focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand`}
+          />
+          <MiniSubmit label={L.save} />
+        </form>
+      )}
+      {schedule.cityErr && (
+        <p className="border-b border-amber-100 bg-amber-50 px-4 py-2 text-xs text-amber-800">{L.cityNotFound}</p>
+      )}
+
+      {view === "cal" ? (
+        <div className="bg-white p-3">
+          <div className="grid grid-cols-7 gap-1 text-center">
+            {DAY_ORDER.map((d) => (
+              <span key={d} className="pb-1 text-[10px] font-bold uppercase tracking-wide text-gray-400">{weekdayShort(d)}</span>
+            ))}
+            {cells.map((c, i) =>
+              c ? (
+                <button
+                  key={c.date}
+                  onClick={() => { setIdx(days.indexOf(c)); setView("day"); }}
+                  className={`flex min-h-[54px] flex-col items-center gap-0.5 rounded-lg border p-1 text-xs transition hover:border-brand/50 ${
+                    c.isToday ? "border-brand bg-brand/10 font-bold" : "border-gray-100 bg-white"
+                  }`}
+                >
+                  <span className={`leading-tight ${c.isToday ? "text-brand-dark" : "text-gray-700"}`}>
+                    {Number(c.date.slice(8, 10)) === 1 || days.indexOf(c) === 0 ? c.dateShort : Number(c.date.slice(8, 10))}
+                  </span>
+                  {c.weather && <span className="text-[11px] leading-none" title={c.weather.label} aria-hidden>{c.weather.emoji}</span>}
+                  {(c.services.length + c.jobs.length) > 0 && (
+                    <span className="rounded-full bg-brand/15 px-1.5 text-[10px] font-semibold leading-4 text-brand-dark tabular-nums">
+                      {c.services.length + c.jobs.length}
+                    </span>
+                  )}
+                  {c.reminders.length > 0 && <span className="h-1.5 w-1.5 rounded-full bg-amber-400" aria-hidden />}
+                </button>
+              ) : (
+                <span key={`pad-${i}`} />
+              )
+            )}
+          </div>
+        </div>
+      ) : count === 0 ? (
+        <div className="flex items-center gap-2 bg-white px-4 py-4 text-sm text-gray-500">
+          <Check className="h-4 w-4 text-brand" />{day.isToday ? L.allClearToday : L.nothingThatDay}
+        </div>
+      ) : (
+        <ul className="divide-y divide-gray-50 bg-white">
+          {day.services.map((s) => (
+            <li key={`s-${s.id}`}>
+              <button onClick={() => onSelectClient(s.id)} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-brand/5">
+                <Avatar name={s.name} />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-semibold text-gray-900">{s.name}</span>
+                  <span className="block truncate text-xs text-gray-500">{s.address || L.serviceDue}</span>
+                </span>
+                <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${s.overdue ? "bg-red-100 text-red-700" : "bg-brand/10 text-brand-dark"}`}>
+                  {s.overdue ? L.overdue : L.serviceDue}
+                </span>
+              </button>
+            </li>
+          ))}
+          {day.jobs.map((j) => (
+            <li key={`j-${j.id}`} className="flex items-center gap-3 px-4 py-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-sky-100"><Briefcase className="h-4 w-4 text-sky-600" /></span>
+              <span className="min-w-0 flex-1">
+                <span className="block break-words font-semibold text-gray-900">{j.description}</span>
+                <span className="block truncate text-xs text-gray-500">{j.who ?? L.scheduledJob}</span>
+              </span>
+            </li>
+          ))}
+          {day.reminders.map((r) => (
+            <li key={`r-${r.id}`}>
+              <button onClick={() => r.clientId && onSelectClient(r.clientId)} disabled={!r.clientId} className="flex w-full items-center gap-3 px-4 py-3 text-left enabled:hover:bg-brand/5">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100"><Bell className="h-4 w-4 text-amber-600" /></span>
+                <span className="min-w-0 flex-1">
+                  <span className="block break-words font-semibold text-gray-900">{r.text}</span>
+                  {r.who && <span className="block truncate text-xs text-gray-500">{r.who}</span>}
+                </span>
+                {r.overdue && <span className="shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">{L.overdue}</span>}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 function ClientDetail({
   client, labels: L, jobs, payments, reminders, photos, onClose,
 }: {
@@ -605,9 +749,9 @@ function ClientDetail({
               <EditField name="name" label={L.colName} defaultValue={client.name} />
               <EditField name="address" label={L.address} defaultValue={client.address ?? ""} />
               <EditField name="phone" label={L.phoneLabel} defaultValue={client.phone ?? ""} type="tel" />
-              <div className="flex gap-2">
+              <div className="grid grid-cols-2 items-end gap-2">
                 <EditField name="amount" label={L.amount} defaultValue={client.amountRaw != null ? String(client.amountRaw) : ""} numeric />
-                <label className="flex-1 text-xs">
+                <label className="block text-xs">
                   <span className="mb-1 block font-medium text-gray-500">{L.colPeriod}</span>
                   <select name="billing_period" defaultValue={client.billingPeriod ?? ""} className="w-full rounded-lg border border-gray-200 px-2 py-2 text-sm text-gray-700 focus:border-brand focus:outline-none">
                     {["", "monthly", "weekly", "biweekly", "one_time"].map((p) => <option key={p} value={p}>{p || "—"}</option>)}
