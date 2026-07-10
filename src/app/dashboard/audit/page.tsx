@@ -133,7 +133,7 @@ const CHECKLIST: { title: string; detail: string; done: boolean }[] = [
   // ⬜ Still to do
   { title: "Confirm migrations 0013 + 0014 ran", done: false, detail: "0015 and 0016 (waitlist) are confirmed. Verify 0013 (beta hardening) and 0014 (client-linked expenses) were each run in Supabase." },
   { title: "Confirm the weekly backup cron", done: false, detail: "Vercel → Settings → Cron Jobs should show /api/cron/backup (Sundays). Hobby allows exactly 2 crons." },
-  { title: "Decide the Netlify site's fate", done: false, detail: "Redirect fieldtext.netlify.app to fieldtextapp.com, or take it down. Right now it can swallow leads into a void." },
+  { title: "Netlify site redirected", done: true, detail: "Done — fieldtext.netlify.app now 301-redirects every path to fieldtextapp.com (drag-and-drop _redirects deploy). No more leads into a void." },
   { title: "A2P opt-in URL current?", done: false, detail: "Your Twilio campaign should point at https://fieldtextapp.com/signup as the opt-in proof. If it still shows the old Netlify URL, update it." },
 ];
 
