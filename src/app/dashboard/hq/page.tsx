@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Wallet, ClipboardList, Users, Sparkles, ExternalLink, UserPlus, Eye, Activity, Send, MessageCircle } from "lucide-react";
+import { Wallet, ClipboardList, Users, Sparkles, ExternalLink, UserPlus, Eye, Activity, Send, MessageCircle, Timer } from "lucide-react";
 import { db, currentSession, listBusinesses } from "@/lib/supabase";
 import { getTwilioUsage, getTwilioDelivery } from "@/lib/twilio-usage";
 import { getUptimeStatus } from "@/lib/uptime";
+import { getCronHealth } from "@/lib/heartbeat";
 import { loadWaitlistLeads } from "../waitlist/data";
 import { WaitlistPanel } from "../waitlist/WaitlistClient";
 import { switchBusiness } from "../actions";
@@ -32,10 +33,11 @@ export default async function HqPage() {
   monthStart.setUTCHours(0, 0, 0, 0);
   const weekStart = new Date(Date.now() - 7 * 86400_000).toISOString();
 
-  const [usage, delivery, uptime, leads, businesses, phonesRes, inboundRes, weekRes] = await Promise.all([
+  const [usage, delivery, uptime, cron, leads, businesses, phonesRes, inboundRes, weekRes] = await Promise.all([
     getTwilioUsage(),
     getTwilioDelivery(),
     getUptimeStatus(),
+    getCronHealth(),
     loadWaitlistLeads(),
     listBusinesses(),
     db().from("authorized_phones").select("*"),
@@ -72,8 +74,9 @@ export default async function HqPage() {
         </p>
       </header>
 
-      {/* ── Site status ───────────────────────────────────────── */}
+      {/* ── Site + reminder-engine status ─────────────────────── */}
       <SiteStatus uptime={uptime} />
+      <CronStatus cron={cron} />
 
       {/* ── Activity + delivery ───────────────────────────────── */}
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -192,6 +195,36 @@ function SiteStatus({ uptime }: { uptime: import("@/lib/uptime").UptimeStatus })
       ) : (
         <p className="mt-1 text-xs text-amber-700">Couldn&apos;t reach UptimeRobot just now — reload in a minute.</p>
       )}
+    </section>
+  );
+}
+
+function CronStatus({ cron }: { cron: import("@/lib/heartbeat").CronHealth }) {
+  // Not reporting = never stamped (migration 0017 not run yet, or no ping since).
+  if (!cron.reporting || cron.secondsAgo == null) {
+    return (
+      <section className="flex items-center justify-between gap-3 rounded-2xl border border-dashed border-gray-200 bg-white px-4 py-3">
+        <span className="flex items-center gap-2 text-sm text-gray-500"><Timer className="h-4 w-4" /> Reminder engine: no heartbeat yet</span>
+        <span className="text-xs text-gray-400">Run the system_state migration to enable this</span>
+      </section>
+    );
+  }
+  const s = cron.secondsAgo;
+  const state = s < 300 ? "running" : s < 900 ? "delayed" : "down"; // <5m ok, 5–15m delayed, >15m down
+  const dot = { running: "bg-green-500", delayed: "bg-amber-400", down: "bg-red-500" }[state];
+  const word = { running: "Running", delayed: "Delayed", down: "DOWN" }[state];
+  const ago = s < 90 ? `${s}s ago` : s < 5400 ? `${Math.round(s / 60)}m ago` : `${Math.round(s / 3600)}h ago`;
+  const isDown = state === "down";
+  return (
+    <section className={`flex items-center justify-between gap-3 rounded-2xl border p-4 shadow-sm ${isDown ? "border-red-200 bg-red-50" : "border-gray-100 bg-white"}`}>
+      <span className="flex items-center gap-2 text-sm font-medium text-gray-700">
+        <Timer className="h-4 w-4 text-brand-dark" /> Reminder engine
+      </span>
+      <span className="flex items-center gap-2 text-sm">
+        <span className={`h-2.5 w-2.5 rounded-full ${dot}`} />
+        <span className="font-semibold text-gray-900">{word}</span>
+        <span className="text-gray-400">· ran {ago}</span>
+      </span>
     </section>
   );
 }

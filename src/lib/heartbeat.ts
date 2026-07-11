@@ -24,6 +24,24 @@ export async function recordCronRun(): Promise<void> {
   }
 }
 
+export interface CronHealth {
+  reporting: boolean; // have we ever seen a heartbeat? (false if migration not run / never pinged)
+  lastRunAt: string | null;
+  secondsAgo: number | null;
+}
+
+/** Read the cron heartbeat for the founder dashboard. Best-effort. */
+export async function getCronHealth(): Promise<CronHealth> {
+  try {
+    const { data } = await db().from("system_state").select("value").eq("key", KEY).maybeSingle();
+    const v = (data?.value as { lastRunAt?: string }) ?? {};
+    if (!v.lastRunAt) return { reporting: false, lastRunAt: null, secondsAgo: null };
+    return { reporting: true, lastRunAt: v.lastRunAt, secondsAgo: Math.round((Date.now() - new Date(v.lastRunAt).getTime()) / 1000) };
+  } catch {
+    return { reporting: false, lastRunAt: null, secondsAgo: null };
+  }
+}
+
 /** If the pinger has gone quiet, text the founder (deduped hourly). Called from /api/health. */
 export async function checkCronHeartbeat(): Promise<void> {
   try {
