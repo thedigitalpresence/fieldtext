@@ -532,6 +532,42 @@ export async function resolvePending(
     session.pending = pending;
     return null;
   }
+
+  if (pending.kind === "quote_draft") {
+    const clientId = pending.action.client_id;
+    if (!clientId) return null;
+    const client = (await listClients(business.id)).find((c) => c.id === clientId);
+    if (!client) return null;
+    const s = a.toLowerCase().trim();
+
+    // "sent it" — the quote is out. Promote the prospect to a live quote and
+    // start the follow-up chase so it doesn't go cold; drop the to-do reminders.
+    if (/\b(sent|done|emailed|texted|delivered|just sent|gave (?:it|her|him|them))\b/i.test(s)
+      || /\b(envi[eé]|mand[eé]|ya (?:la|le))\b/i.test(s)) {
+      if (client.status !== "active" && client.status !== "lost") await updateClient(clientId, { status: "quoted" });
+      // Cancel any remaining "send X a quote" to-dos for this client (fetch+filter
+      // so it works on both Supabase and the file-backed test DB).
+      const { data: todos } = await db().from("reminders").select("id, text")
+        .eq("business_id", business.id).eq("client_id", clientId).eq("kind", "manual").eq("status", "pending");
+      for (const rr of (todos ?? []) as { id: string; text: string }[]) {
+        if (/\bquote\b|cotiz/i.test(rr.text)) await db().from("reminders").update({ status: "cancelled" }).eq("id", rr.id);
+      }
+      await scheduleQuoteReminders(business, { ...client, status: "quoted" });
+      return t.quoteDraftSentAck(client.name, lang);
+    }
+    // "draft" / "yes" — write the customer-facing message; keep listening for SENT.
+    if (/\b(draft|write|yes|yeah|yep|sure|okay?|please|do it|help)\b/i.test(s)
+      || /\b(borrador|escrib|s[ií]|dale|hazlo)\b/i.test(s)) {
+      session.pending = { kind: "quote_draft", action: pending.action, expiresAt: pendingExpiry() };
+      return t.quoteDraftBody(client, lang);
+    }
+    // "no / later" — drop it for now (don't nag; let a real command through otherwise).
+    if (/^(no|nope|nah|not now|later|skip|stop|luego|despu[eé]s)\b/i.test(s)) {
+      return t.quoteDraftSkip(client.name, lang);
+    }
+    // Anything else is probably a real command — let it parse normally.
+    return null;
+  }
   return null;
 }
 

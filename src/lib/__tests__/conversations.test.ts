@@ -844,6 +844,43 @@ test("G5: every command family works against every book state", async () => {
   }
 });
 
+test("G12: quote to-do reminder is specific, offers a draft, then chases on SENT", async () => {
+  await reset([{ name: "Elena Ruiz", address: "5 Oak St", status: "quoted", amount: 200 }]);
+  const id = await bizId();
+  const { data: clients } = await db().from("clients").select("*").eq("business_id", id);
+  const elena = (clients as { id: string; name: string }[]).find((c) => c.name === "Elena Ruiz")!;
+
+  // Seed a DUE manual "send Elena quote" to-do linked to her.
+  await db().from("reminders").insert({
+    business_id: id, client_id: elena.id, text: "send Elena quote",
+    due_at: new Date(Date.now() - 60_000).toISOString(), status: "pending", kind: "manual", source_message_id: null,
+  });
+
+  const { runAllDue } = await import("../reminders");
+  await runAllDue(new Date());
+
+  // The fired reminder must be the rich version: names her, gives details, offers a draft.
+  const { data: msgs } = await db().from("messages").select("*").eq("business_id", id).eq("direction", "outbound");
+  const fired = (msgs as { body: string }[]).find((m) => /Quote reminder/i.test(m.body));
+  assert.ok(fired, "a rich quote reminder was sent");
+  assert.match(fired!.body, /Elena Ruiz/);
+  assert.match(fired!.body, /5 Oak St/);
+  assert.match(fired!.body, /DRAFT/);
+  assert.ok(!/^⏰ Reminder: send Elena quote$/.test(fired!.body), "not the bare reminder");
+
+  // Reply DRAFT → a copy-and-send message addressed to Elena.
+  const draft = await say("draft");
+  assert.match(draft, /draft/i);
+  assert.match(draft, /Hi Elena/);
+  assert.match(draft, /\$200/);
+
+  // Reply SENT → promoted to a live quote and the follow-up chase is scheduled.
+  const ack = await say("sent");
+  assert.match(ack, /sent|follow|cold/i);
+  const { data: after } = await db().from("reminders").select("*").eq("client_id", elena.id).eq("kind", "quote_followup").eq("status", "pending");
+  assert.ok((after as unknown[]).length >= 1, "close-loop follow-ups scheduled after SENT");
+});
+
 test("scenario count", () => {
   console.log(`\n  ▸ conversation scenarios executed: ${SCENARIOS}\n`);
   assert.ok(SCENARIOS >= 150, `expected a large matrix, got ${SCENARIOS}`);

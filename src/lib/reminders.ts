@@ -155,8 +155,22 @@ export async function runDueForBusiness(business: Business, now: Date): Promise<
     .order("due_at", { ascending: true });
 
   for (const r of (due ?? []) as Reminder[]) {
-    // quote_followup text is already the full localized nudge; manual gets a prefix.
-    const body = r.kind === "quote_followup" ? r.text : t.reminderDue(r.text, lang);
+    // A manual "send X a quote" to-do: fire it with the client's details and an
+    // offer to draft the message, instead of a bare "Reminder: send quote".
+    const isQuoteTodo = r.kind === "manual" && r.client_id != null && /\bquote\b|cotiz/i.test(r.text);
+    let quoteTodoClient: Client | null = null;
+    if (isQuoteTodo) {
+      const { data } = await db().from("clients").select("*").eq("id", r.client_id!).maybeSingle();
+      quoteTodoClient = (data as Client) ?? null;
+    }
+
+    // quote_followup text is already the full localized nudge; a quote to-do gets
+    // the rich version; everything else manual gets the plain "Reminder:" prefix.
+    const body = r.kind === "quote_followup"
+      ? r.text
+      : quoteTodoClient
+        ? t.quoteTodo(quoteTodoClient, lang)
+        : t.reminderDue(r.text, lang);
     const ok = await deliver(business, body);
     if (ok) {
       await db().from("reminders").update({ status: "sent", sent_at: now.toISOString() }).eq("id", r.id);
@@ -174,7 +188,19 @@ export async function runDueForBusiness(business: Business, now: Date): Promise<
           const phone = await getPrimaryPhone(business.id);
           if (phone) await db().from("authorized_phones").update({ pending_state: pending }).eq("id", phone.id);
         }
-      } else summary.reminders_sent++;
+      } else {
+        summary.reminders_sent++;
+        // Arm the draft flow so DRAFT / SENT replies land on this client.
+        if (quoteTodoClient) {
+          const pending = {
+            kind: "quote_draft",
+            action: { intent: "update_status", confidence: 1, client_id: quoteTodoClient.id },
+            expiresAt: new Date(now.getTime() + 18 * 60 * 60 * 1000).toISOString(),
+          };
+          const phone = await getPrimaryPhone(business.id);
+          if (phone) await db().from("authorized_phones").update({ pending_state: pending }).eq("id", phone.id);
+        }
+      }
     }
   }
 

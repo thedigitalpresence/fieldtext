@@ -145,6 +145,37 @@ export const t = {
     lang === "es"
       ? `📣 ¿Alguna respuesta de ${name} sobre la cotización${amountStr}? Responde ADENTRO, FUERA, o SIN RESPUESTA.`
       : `📣 Any word back from ${name} on the quote${amountStr}? Reply IN, OUT, or NO REPLY.`,
+  // Pre-send quote to-do reminder — specific, with the details, and offers a draft.
+  quoteTodo: (client: { name: string; address?: string | null; service_description?: string | null; amount?: number | null; billing_period?: string | null }, lang: Lang) => {
+    const bits: string[] = [];
+    if (client.address) bits.push(client.address);
+    if (client.service_description) bits.push(client.service_description);
+    if (client.amount != null) bits.push(`${money(client.amount)}${periodLabel(client.billing_period, lang)}`);
+    const detail = bits.length ? ` (${bits.join(" · ")})` : "";
+    return lang === "es"
+      ? `📣 Recordatorio de cotización: ${client.name} sigue esperando su precio${detail}. Responde BORRADOR y te escribo un mensaje para enviarle, o ENVIADA cuando ya salga.`
+      : `📣 Quote reminder: ${client.name} is still waiting on a quote${detail}. Reply DRAFT and I'll write a message you can send them, or SENT once it's out.`;
+  },
+  // A ready-to-send, customer-facing draft the owner can copy/tweak/forward.
+  quoteDraftBody: (client: { name: string; address?: string | null; service_description?: string | null; amount?: number | null; billing_period?: string | null }, lang: Lang) => {
+    const first = client.name.split(/\s+/)[0] || client.name;
+    const service = client.service_description || (lang === "es" ? "el trabajo" : "the work");
+    const at = client.address ? (lang === "es" ? ` en ${client.address}` : ` at ${client.address}`) : "";
+    const price = client.amount != null ? `${money(client.amount)}${periodLabel(client.billing_period, lang)}` : (lang === "es" ? "$___" : "$___");
+    const msg = lang === "es"
+      ? `¡Hola ${first}! Gracias por escribirnos. Para ${service}${at}, lo podemos hacer por ${price}. Tengo espacio esta semana, ¿quieres que te agende?`
+      : `Hi ${first}! Thanks for reaching out. For ${service}${at}, we can do ${price}. I've got an opening this week — want me to get you on the schedule?`;
+    return lang === "es"
+      ? `Aquí tienes un borrador para ${client.name} — cópialo, pon tu precio y envíalo:\n\n"${msg}"\n\nResponde ENVIADA cuando ya salga.`
+      : `Here's a draft for ${client.name} — copy it, set your price, and send:\n\n"${msg}"\n\nReply SENT once it's out.`;
+  },
+  quoteDraftSentAck: (name: string, lang: Lang) =>
+    lang === "es"
+      ? `¡Bien! Marqué la cotización de ${name} como enviada y le doy seguimiento para que no se enfríe. 📣`
+      : `Nice — marked ${name}'s quote as sent. I'll chase the follow-up so it doesn't go cold. 📣`,
+  quoteDraftSkip: (name: string, lang: Lang) =>
+    lang === "es" ? `👍 Sin problema — te recuerdo de nuevo con ${name}.` : `👍 No problem — I'll remind you again about ${name}.`,
+
   quoteWon: (name: string, lang: Lang) =>
     lang === "es" ? `🎉 ¡${name} aceptó! Los pasé a activos.` : `🎉 ${name} is in! Moved them to active.`,
   quoteLostAck: (name: string, lang: Lang) =>
