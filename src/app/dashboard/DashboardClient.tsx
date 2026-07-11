@@ -330,14 +330,18 @@ export default function DashboardClient(props: Props) {
               className={`w-full rounded-xl border border-gray-200 bg-white pl-9 pr-3 ${TAP} text-sm shadow-sm focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand`}
             />
           </div>
-          <Link
-            href="/dashboard/import"
-            title={L.importClients}
-            aria-label={L.importClients}
-            className={`flex ${TAP} min-w-[44px] shrink-0 items-center justify-center gap-1.5 rounded-xl bg-brand px-3 text-sm font-medium text-white hover:bg-brand-dark`}
-          >
-            <Upload className="h-4 w-4" /><span className="hidden sm:inline">{L.importClients}</span>
-          </Link>
+          {/* On an empty book the big "Start your black book" banner above is the
+              import CTA, so this button only appears once you have clients. */}
+          {props.clients.length > 0 && (
+            <Link
+              href="/dashboard/import"
+              title={L.importClients}
+              aria-label={L.importClients}
+              className={`flex ${TAP} min-w-[44px] shrink-0 items-center justify-center gap-1.5 rounded-xl bg-brand px-3 text-sm font-medium text-white hover:bg-brand-dark`}
+            >
+              <Upload className="h-4 w-4" /><span className="hidden sm:inline">{L.importClients}</span>
+            </Link>
+          )}
           <a
             href="/api/export"
             title={L.exportCsv}
