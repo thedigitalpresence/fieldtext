@@ -13,6 +13,28 @@ const FEATURES = [
   "\"Invoice Bob\" makes one you can forward to get paid",
   "Ask anything, like \"what's Monday look like?\"",
 ];
+const FAQ = [
+  {
+    q: "How much does it cost a month?",
+    a: `It's free while we're in beta. After that it's one flat monthly price with no per-text fees, no setup cost, and no contract. Beta testers lock in the lowest rate for being early.`,
+  },
+  {
+    q: "Do I or my customers need to download an app?",
+    a: `No. You text one number the same way you'd text a friend. There's nothing to install, and your customers never have to sign up for or see anything.`,
+  },
+  {
+    q: "What can I text it?",
+    a: `Anything about your work, in plain English: quotes, jobs, payments, expenses, reminders, notes, even photos. You can also ask it things like "who owes me?" or "what's Monday look like?" It understands English and Spanish.`,
+  },
+  {
+    q: "What if it doesn't understand me, or I make a mistake?",
+    a: `If it's not sure, it asks a quick question instead of guessing. And anything it saves, you can fix or delete on your dashboard, so nothing ever gets stuck wrong.`,
+  },
+  {
+    q: "Is my information private?",
+    a: `Yes. Your book is yours. We never sell or share your data, and you can export everything to a spreadsheet whenever you want.`,
+  },
+];
 
 export default function Home() {
   return (
@@ -72,6 +94,22 @@ export default function Home() {
           ))}
         </ul>
         <p className="mt-5 text-sm font-medium text-brand-dark">Free while we&apos;re in beta.</p>
+      </section>
+
+      {/* FAQ */}
+      <section className="w-full max-w-lg text-left">
+        <p className="text-center text-xs font-bold uppercase tracking-widest text-brand-dark">Common questions</p>
+        <div className="mt-4 divide-y divide-gray-100 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+          {FAQ.map((f) => (
+            <details key={f.q} className="group px-5 py-4">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 font-semibold text-gray-900 [&::-webkit-details-marker]:hidden">
+                {f.q}
+                <span className="shrink-0 text-xl leading-none text-brand transition-transform group-open:rotate-45" aria-hidden>+</span>
+              </summary>
+              <p className="mt-2 text-sm leading-6 text-gray-600">{f.a}</p>
+            </details>
+          ))}
+        </div>
       </section>
 
       {/* Footer */}
