@@ -183,8 +183,8 @@ export const t = {
     const at = client.address ? (lang === "es" ? ` en ${client.address}` : ` at ${client.address}`) : "";
     const price = client.amount != null ? `${money(client.amount)}${periodLabel(client.billing_period, lang)}` : "$___";
     return lang === "es"
-      ? `¡Hola ${first}! Gracias por escribirnos. Para ${service}${at}, lo podemos hacer por ${price}. Tengo espacio esta semana. ¿Quieres que te agende?`
-      : `Hi ${first}! Thanks for reaching out. For ${service}${at}, we can do ${price}. I have an opening this week. Want me to get you on the schedule?`;
+      ? `¡Hola ${first}! Gracias por escribirnos. Para ${service}${at}, lo podemos hacer por ${price}. Avísame si quieres seguir adelante.`
+      : `Hi ${first}! Thanks for reaching out. For ${service}${at}, we can do ${price}. Let me know if you'd like to move forward.`;
   },
   quoteDraftSentAck: (name: string, lang: Lang) =>
     lang === "es"
