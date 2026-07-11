@@ -23,11 +23,15 @@ const EMPTY_TWIML = '<?xml version="1.0" encoding="UTF-8"?><Response></Response>
 const STOP_WORDS = new Set(["stop", "stopall", "unsubscribe", "baja"]);
 const AMBIGUOUS_STOP = new Set(["cancel", "end", "quit", "cancelar"]);
 const START_WORDS = new Set(["start", "unstop", "alta", "continuar"]);
-function replyTwiml(message: string): string {
-  // Models sometimes emit the literal two chars "\n" — turn those into real breaks.
-  const clean = message.replace(/\\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
-  const escaped = clean.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  return `<?xml version="1.0" encoding="UTF-8"?><Response><Message>${escaped}</Message></Response>`;
+function replyTwiml(message: string | string[]): string {
+  // One or more messages -> one <Message> each (Twilio sends them in order).
+  const parts = (Array.isArray(message) ? message : [message]).map((m) => {
+    // Models sometimes emit the literal two chars "\n" — turn those into real breaks.
+    const clean = m.replace(/\\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+    return clean.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  });
+  const body = parts.map((p) => `<Message>${p}</Message>`).join("");
+  return `<?xml version="1.0" encoding="UTF-8"?><Response>${body}</Response>`;
 }
 
 /**
@@ -174,8 +178,11 @@ export async function handleInbound(params: InboundParams): Promise<InboundOutco
         await db().from("authorized_phones").update({ pending_state: session.pending ?? null }).eq("id", authPhone.id);
         const inId = await logMessage({ businessId: business.id, direction: "inbound", fromPhone: fromE164, body, intent: "clarification", externalId: params.messageSid });
         await logSms(business, { direction: "inbound", body, messageId: inId });
-        const outId = await logMessage({ businessId: business.id, direction: "outbound", body: resolved });
-        await logSms(business, { direction: "outbound", body: resolved, messageId: outId });
+        // A resolution can be one message or several (e.g. the quote draft = 2 texts).
+        for (const out of Array.isArray(resolved) ? resolved : [resolved]) {
+          const outId = await logMessage({ businessId: business.id, direction: "outbound", body: out });
+          await logSms(business, { direction: "outbound", body: out, messageId: outId });
+        }
         return { twiml: replyTwiml(resolved), authorized: true };
       }
       // Unrelated text — clear the stale question and parse normally. (A sticky

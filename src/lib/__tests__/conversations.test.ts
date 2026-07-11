@@ -56,8 +56,10 @@ async function reset(book: { name: string; address?: string; phone?: string; sta
 async function say(body: string): Promise<string> {
   SID++;
   const out = await handleInbound({ from: "+15550001111", to: "+19995550000", body, messageSid: `SMconv${SID}` });
-  const m = out.twiml.match(/<Message>([\s\S]*?)<\/Message>/);
-  return m ? m[1].replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">") : "";
+  // A reply may be one or several <Message> blocks; join them for assertions.
+  const parts = [...out.twiml.matchAll(/<Message>([\s\S]*?)<\/Message>/g)]
+    .map((m) => m[1].replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">"));
+  return parts.join("\n\n");
 }
 
 interface Turn { send: string; expect?: (RegExp | string)[]; reject?: (RegExp | string)[] }
@@ -868,11 +870,16 @@ test("G12: quote to-do reminder is specific, offers a draft, then chases on SENT
   assert.match(fired!.body, /DRAFT/);
   assert.ok(!/^⏰ Reminder: send Elena quote$/.test(fired!.body), "not the bare reminder");
 
-  // Reply DRAFT → a copy-and-send message addressed to Elena.
+  // Reply DRAFT → two texts: instructions (with a clear price callout) + the
+  // clean, quote-free customer message.
   const draft = await say("draft");
-  assert.match(draft, /draft/i);
+  assert.match(draft, /Copy the next message/i);
+  assert.match(draft, /price/i);
   assert.match(draft, /Hi Elena/);
   assert.match(draft, /\$200/);
+  assert.ok(!draft.includes("—"), "no em-dashes in the draft");
+  // The customer message itself carries no wrapping quotes.
+  assert.ok(!/"Hi Elena/.test(draft), "clean message is not wrapped in quotes");
 
   // Reply SENT → promoted to a live quote and the follow-up chase is scheduled.
   const ack = await say("sent");

@@ -159,7 +159,7 @@ async function resolveClient(
 /** Resume a stored pending action with the operator's answer. Exported for inbound.ts. */
 export async function resolvePending(
   business: Business, pending: PendingState, answer: string, ctx: ParseContext, session: ActionSession
-): Promise<string | null> {
+): Promise<string | string[] | null> {
   const lang = session.lang ?? businessLang(business);
   if (new Date(pending.expiresAt).getTime() < Date.now()) return null;
   const a = answer.trim();
@@ -555,11 +555,12 @@ export async function resolvePending(
       await scheduleQuoteReminders(business, { ...client, status: "quoted" });
       return t.quoteDraftSentAck(client.name, lang);
     }
-    // "draft" / "yes" — write the customer-facing message; keep listening for SENT.
+    // "draft" / "yes" — send TWO texts: instructions, then the clean copy-paste
+    // message. Keep listening for SENT.
     if (/\b(draft|write|yes|yeah|yep|sure|okay?|please|do it|help)\b/i.test(s)
       || /\b(borrador|escrib|s[ií]|dale|hazlo)\b/i.test(s)) {
       session.pending = { kind: "quote_draft", action: pending.action, expiresAt: pendingExpiry() };
-      return t.quoteDraftBody(client, lang);
+      return [t.quoteDraftIntro(client, lang), t.quoteDraftMessage(client, lang)];
     }
     // "no / later" — drop it for now (don't nag; let a real command through otherwise).
     if (/^(no|nope|nah|not now|later|skip|stop|luego|despu[eé]s)\b/i.test(s)) {

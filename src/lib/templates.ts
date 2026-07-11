@@ -156,18 +156,30 @@ export const t = {
       ? `📣 Recordatorio de cotización: ${client.name} sigue esperando su precio${detail}. Responde BORRADOR y te escribo un mensaje para enviarle, o ENVIADA cuando ya salga.`
       : `📣 Quote reminder: ${client.name} is still waiting on a quote${detail}. Reply DRAFT and I'll write a message you can send them, or SENT once it's out.`;
   },
-  // A ready-to-send, customer-facing draft the owner can copy/tweak/forward.
-  quoteDraftBody: (client: { name: string; address?: string | null; service_description?: string | null; amount?: number | null; billing_period?: string | null }, lang: Lang) => {
+  // The draft is sent as TWO texts: (1) this instruction text, then (2) the clean
+  // message on its own so it's trivial to copy and paste. No surrounding quotes,
+  // no em-dashes. The instruction makes the price fill-in unmistakable.
+  quoteDraftIntro: (client: { name: string; amount?: number | null; billing_period?: string | null }, lang: Lang) => {
+    const priceKnown = client.amount != null;
+    const priceStr = priceKnown ? `${money(client.amount)}${periodLabel(client.billing_period, lang)}` : "";
+    if (lang === "es") {
+      return priceKnown
+        ? `Aquí tienes un borrador para ${client.name}. Copia el siguiente mensaje y envíaselo. Antes de enviar, revisa que el precio (${priceStr}) esté bien. Responde ENVIADA cuando salga.`
+        : `Aquí tienes un borrador para ${client.name}. Copia el siguiente mensaje y envíaselo. IMPORTANTE: cambia $___ por tu precio real antes de enviarlo. Responde ENVIADA cuando salga.`;
+    }
+    return priceKnown
+      ? `Here's a draft for ${client.name}. Copy the next message and send it to them. Before you send, double check the price (${priceStr}) is right. Reply SENT once it's out.`
+      : `Here's a draft for ${client.name}. Copy the next message and send it to them. IMPORTANT: replace $___ with your real price before you send. Reply SENT once it's out.`;
+  },
+  // Text 2: the customer-facing message, no quotes so it copies cleanly.
+  quoteDraftMessage: (client: { name: string; address?: string | null; service_description?: string | null; amount?: number | null; billing_period?: string | null }, lang: Lang) => {
     const first = client.name.split(/\s+/)[0] || client.name;
     const service = client.service_description || (lang === "es" ? "el trabajo" : "the work");
     const at = client.address ? (lang === "es" ? ` en ${client.address}` : ` at ${client.address}`) : "";
-    const price = client.amount != null ? `${money(client.amount)}${periodLabel(client.billing_period, lang)}` : (lang === "es" ? "$___" : "$___");
-    const msg = lang === "es"
-      ? `¡Hola ${first}! Gracias por escribirnos. Para ${service}${at}, lo podemos hacer por ${price}. Tengo espacio esta semana, ¿quieres que te agende?`
-      : `Hi ${first}! Thanks for reaching out. For ${service}${at}, we can do ${price}. I've got an opening this week — want me to get you on the schedule?`;
+    const price = client.amount != null ? `${money(client.amount)}${periodLabel(client.billing_period, lang)}` : "$___";
     return lang === "es"
-      ? `Aquí tienes un borrador para ${client.name} — cópialo, pon tu precio y envíalo:\n\n"${msg}"\n\nResponde ENVIADA cuando ya salga.`
-      : `Here's a draft for ${client.name} — copy it, set your price, and send:\n\n"${msg}"\n\nReply SENT once it's out.`;
+      ? `¡Hola ${first}! Gracias por escribirnos. Para ${service}${at}, lo podemos hacer por ${price}. Tengo espacio esta semana. ¿Quieres que te agende?`
+      : `Hi ${first}! Thanks for reaching out. For ${service}${at}, we can do ${price}. I have an opening this week. Want me to get you on the schedule?`;
   },
   quoteDraftSentAck: (name: string, lang: Lang) =>
     lang === "es"
