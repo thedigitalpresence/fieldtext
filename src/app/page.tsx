@@ -24,7 +24,7 @@ const FAQ = [
   },
   {
     q: "What can I text it?",
-    a: `Anything about your work, in plain English: quotes, jobs, payments, expenses, reminders, notes, even photos. You can also ask it things like "who owes me?" or "what's Monday look like?" It understands English and Spanish.`,
+    a: `Anything about your work: quotes, jobs, payments, expenses, reminders, notes, even photos. You can also ask it things like "who owes me?" or "what's Monday look like?" It understands English and Spanish.`,
   },
   {
     q: "What if it doesn't understand me, or I make a mistake?",
