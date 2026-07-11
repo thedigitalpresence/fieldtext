@@ -14,9 +14,10 @@ export async function GET() {
     if (error) throw error;
     // Dead-man's switch: this endpoint is pinged independently (UptimeRobot), so
     // use it to notice if the reminder cron pinger has gone quiet. Best-effort.
-    const { checkCronHeartbeat } = await import("@/lib/heartbeat");
+    const { checkCronHeartbeat, getCronHealth } = await import("@/lib/heartbeat");
     await checkCronHeartbeat();
-    return NextResponse.json({ ok: true, db: true, time: new Date().toISOString() });
+    const cron = await getCronHealth(); // exposed for diagnostics; no secrets
+    return NextResponse.json({ ok: true, db: true, time: new Date().toISOString(), cronSecondsAgo: cron.secondsAgo });
   } catch (e) {
     console.error("[health] db check failed:", e);
     return NextResponse.json({ ok: false, db: false }, { status: 503 });

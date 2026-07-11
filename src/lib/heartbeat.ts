@@ -9,7 +9,7 @@ import { db } from "./supabase";
  * run-due nor the health check can break.
  */
 const KEY = "cron:run-due";
-const STALE_MIN = 15; // pinger runs every 1 min; 15 min of silence = it's down
+const STALE_MIN = 20; // pinger runs every 1 min; 20 min of silence = it's really down
 const ALERT_COOLDOWN_MIN = 60; // don't re-nag more than hourly while it's down
 
 /** Stamp "the pinger just ran". Called from /api/cron/run-due after auth. */
@@ -18,7 +18,12 @@ export async function recordCronRun(): Promise<void> {
     const now = new Date().toISOString();
     const { data } = await db().from("system_state").select("value").eq("key", KEY).maybeSingle();
     const value = { ...((data?.value as Record<string, unknown>) ?? {}), lastRunAt: now };
-    await db().from("system_state").upsert({ key: KEY, value, updated_at: now });
+    // Explicit update-or-insert (upsert onConflict was unreliable): guarantees
+    // lastRunAt actually advances, otherwise the health check false-alarms.
+    const res = data
+      ? await db().from("system_state").update({ value, updated_at: now }).eq("key", KEY)
+      : await db().from("system_state").insert({ key: KEY, value, updated_at: now });
+    if (res.error) console.error("[heartbeat] record write failed:", res.error.message);
   } catch (e) {
     console.error("[heartbeat] record failed:", e);
   }
@@ -56,16 +61,16 @@ export async function checkCronHeartbeat(): Promise<void> {
     if (v.lastAlertAt && now - new Date(v.lastAlertAt).getTime() < ALERT_COOLDOWN_MIN * 60_000) return; // already warned recently
 
     const mins = Math.round(staleMs / 60_000);
+    // Save the alert time FIRST so we don't double-fire if the SMS is slow.
+    await db().from("system_state").update({
+      value: { ...v, lastAlertAt: new Date().toISOString() },
+      updated_at: new Date().toISOString(),
+    }).eq("key", KEY);
     const { alertFounder } = await import("./security");
     await alertFounder(
       "cron-heartbeat",
-      `Reminder pinger looks DOWN — no run in ${mins} min. Reminders and quote follow-ups won't fire until it's back. Check your cron-job.org job.`,
+      `Reminder pinger looks DOWN. No run in ${mins} min, so reminders and quote follow-ups won't fire until it's back. Check your cron-job.org job.`,
     );
-    await db().from("system_state").upsert({
-      key: KEY,
-      value: { ...v, lastAlertAt: new Date().toISOString() },
-      updated_at: new Date().toISOString(),
-    });
   } catch (e) {
     console.error("[heartbeat] check failed:", e);
   }
