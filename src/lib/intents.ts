@@ -13,6 +13,7 @@ import {
   clientBalance, openBalances, totalOutstanding,
 } from "./charges";
 import { saveMedia } from "./attachments";
+import { toE164 } from "./phone";
 import { config } from "./config";
 import type { Business, Client, Charge, Job, ParsedAction, ParseResult, PendingState, ServiceInterval, Lang } from "./types";
 
@@ -569,6 +570,25 @@ export async function resolvePending(
     // Anything else is probably a real command — let it parse normally.
     return null;
   }
+
+  if (pending.kind === "update_field") {
+    const clientId = pending.action.client_id;
+    const field = pending.field as "address" | "phone" | "email" | "note" | undefined;
+    if (!clientId || !field) return null;
+    const client = (await listClients(business.id)).find((c) => c.id === clientId);
+    if (!client) return null;
+    const val = a.trim();
+    if (!val) { session.pending = pending; return askForField(field, client.name, lang); }
+
+    const patch: Partial<Client> = {};
+    let saved = "";
+    if (field === "address") { patch.address = normalizeAddress(val); saved = `📍 ${patch.address}`; }
+    else if (field === "phone") { const e = toE164(val) ?? val; patch.phone = e; saved = `📞 ${e}`; }
+    else if (field === "email") { patch.email = val.toLowerCase(); saved = `✉️ ${val.toLowerCase()}`; }
+    else { patch.notes = client.notes ? `${client.notes}\n${val}` : val; saved = lang === "es" ? `nota: "${val}"` : `note: "${val}"`; }
+    await updateClient(clientId, patch);
+    return t.infoSaved(client.name, saved, lang);
+  }
   return null;
 }
 
@@ -1020,6 +1040,7 @@ async function updateClientInfo(business: Business, p: ParsedAction, session: Ac
 
   const patch: Partial<Client> = {};
   const saved: string[] = [];
+  if (p.address) { patch.address = normalizeAddress(p.address); saved.push(`📍 ${patch.address}`); }
   if (p.phone) { patch.phone = p.phone; saved.push(`📞 ${p.phone}`); }
   if (p.email) { patch.email = p.email; saved.push(`✉️ ${p.email}`); }
   if (p.referred_by) { patch.referred_by = p.referred_by; saved.push(lang === "es" ? `referido por ${p.referred_by}` : `referred by ${p.referred_by}`); }
@@ -1027,9 +1048,27 @@ async function updateClientInfo(business: Business, p: ParsedAction, session: Ac
     patch.notes = client.notes ? `${client.notes}\n${p.note_text}` : p.note_text;
     saved.push(lang === "es" ? `nota: "${p.note_text}"` : `note: "${p.note_text}"`);
   }
-  if (!saved.length) return lang === "es" ? `¿Qué guardo para ${client.name}?` : `What should I save for ${client.name}?`;
+  if (!saved.length) {
+    // "add Mitch address" — they named a field but no value yet. Ask for it and
+    // capture the next reply as that field (no other chasing).
+    if (p.collect_field) {
+      session.pending = { kind: "update_field", action: { intent: "update_client_info", confidence: 1, client_id: client.id, client_name: client.name }, field: p.collect_field, expiresAt: pendingExpiry() };
+      return askForField(p.collect_field, client.name, lang);
+    }
+    return lang === "es" ? `¿Qué guardo para ${client.name}?` : `What should I save for ${client.name}?`;
+  }
   await updateClient(client.id, patch);
   return t.infoSaved(client.name, saved.join(" · "), lang);
+}
+
+function askForField(field: "address" | "phone" | "email" | "note", name: string, lang: Lang): string {
+  const q: Record<string, [string, string]> = {
+    address: [`What's ${name}'s address?`, `¿Cuál es la dirección de ${name}?`],
+    phone: [`What's ${name}'s phone number?`, `¿Cuál es el teléfono de ${name}?`],
+    email: [`What's ${name}'s email?`, `¿Cuál es el correo de ${name}?`],
+    note: [`What's the note for ${name}?`, `¿Qué nota agrego para ${name}?`],
+  };
+  return lang === "es" ? q[field][1] : q[field][0];
 }
 
 async function pauseClient(business: Business, p: ParsedAction, session: ActionSession, lang: Lang): Promise<string> {

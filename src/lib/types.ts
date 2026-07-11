@@ -28,11 +28,12 @@ export interface BusinessSettings {
 
 /** Conversation memory: the pending question the next inbound text may answer. */
 export interface PendingState {
-  kind: "which_client" | "confirm_create" | "missing_amount" | "confirm_match" | "complete_client" | "attach_photo" | "quote_status" | "quote_draft";
+  kind: "which_client" | "confirm_create" | "missing_amount" | "confirm_match" | "complete_client" | "attach_photo" | "quote_status" | "quote_draft" | "update_field";
   action: ParsedAction; // the action to run once resolved
   candidateIds?: string[]; // which_client choices in order / confirm_match's single candidate
   missing?: string[]; // complete_client: which fields we're still chasing ("name"|"address"|"phone")
   media?: { url: string; contentType?: string }[]; // attach_photo: the photos waiting for a client
+  field?: string; // update_field: which field to capture ("address"|"phone"|"email"|"note")
   expiresAt: string; // ISO; stale questions are ignored
 }
 
@@ -261,6 +262,7 @@ export interface ParsedAction {
   phone?: string; // update_client_info
   email?: string; // update_client_info
   referred_by?: string; // update_client_info
+  collect_field?: "address" | "phone" | "email" | "note"; // update_client_info: field to ADD when no value given yet ("add Mitch address")
   expense_category?: string; // log_expense: mulch|fuel|equipment|labor|other
   target_date?: string; // YYYY-MM-DD for reschedule_visit / bulk_reschedule
   pause_until?: string; // YYYY-MM-DD for pause_client (optional)

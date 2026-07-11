@@ -74,6 +74,7 @@ const ACTION_PROPS = {
   phone: { type: "string", description: "update_client_info: client's phone." },
   email: { type: "string", description: "update_client_info: client's email." },
   referred_by: { type: "string", description: "update_client_info: who referred this client." },
+  collect_field: { type: "string", enum: ["address", "phone", "email", "note"], description: "update_client_info when the user wants to ADD/SET a field but gave NO value yet (e.g. 'add Mitch address', 'set Jane phone'). Set this to the field; the app asks for the value. If a value IS given, fill address/phone/email/note_text directly instead." },
   expense_category: { type: "string", enum: ["materials", "fuel", "equipment", "labor", "other"], description: "log_expense category." },
   target_date: { type: "string", description: "YYYY-MM-DD for reschedule_visit / bulk_reschedule." },
   pause_until: { type: "string", description: "YYYY-MM-DD resume date for pause_client, if given." },
@@ -122,9 +123,9 @@ function systemPrompt(ctx: ParseContext): string {
     `- payments: "collected/paid/cobré" -> log_payment payment_status=paid; "owes"/"hasn't paid"/"debe" -> payment_status=unpaid; "overdue/atrasado" -> overdue.`,
     ``,
     `Intents: log_quote, update_status, log_job, log_payment, set_reminder, query, correction (fixing the last record, e.g. "no it's 333 not 233"), help,`,
-    `query = ANY question or request to see saved info — "who owes me?", "what's my monday route?", "elena's notes", "need her photos", "send me her pics", "what do I know about bob", "her address". Anything asking to SEE or KNOW something is a query (the answer step has the recent conversation, so it resolves "her"/"his"). Route these to query — NEVER to help or needs_clarification.`,
+    `query = ANY question or request to SEE saved info — "who owes me?", "what's my monday route?", "elena's notes", "need her photos", "send me her pics", "what do I know about bob", "show me her address". SEE/KNOW verbs (show, what's, send, pull up) = query. But SET verbs (add, set, change, update) are NOT query: "add Mitch address" / "set Jane phone" = update_client_info with collect_field (see below), NEVER query.`,
     `log_expense ("spent 84 on mulch at home depot" -> amount + expense_category + description — money OUT, never log_payment). If it's spent FOR a client ("spent 100 on mulch for Elena"), ALSO set client_name so it's saved to their card,`,
-    `update_client_info ("angela's number is 555-0142" -> phone; "gate code 4412 at the smiths" -> note_text; "jones referred by bob" -> referred_by; "note for the wilsons: big backyard, steep slope, wants edging" -> note_text — site-visit notes BEFORE any quote are normal, the client may not exist yet),`,
+    `update_client_info ("angela's number is 555-0142" -> phone; "gate code 4412 at the smiths" -> note_text; "jones referred by bob" -> referred_by; "note for the wilsons: big backyard, steep slope, wants edging" -> note_text; "mitch's address is 5 oak st" -> address — site-visit notes BEFORE any quote are normal, the client may not exist yet). "add Mitch address" / "set Jane phone" / "update the smiths email" with NO value = update_client_info with collect_field set to that field (the app then asks for the value),`,
     `pause_client ("hold jones til spring", "pause the smiths" -> pause_until if a date is given) / resume_client,`,
     `skip_visit ("skip the smiths this week" — one visit only, NOT a schedule change),`,
     `reschedule_visit ("move garcia to friday" -> target_date — one visit only, do NOT change service_day),`,
@@ -313,6 +314,17 @@ function parseClause(text: string, _ctx: ParseContext): Record<string, any> | nu
     const desc = body.replace(/^.*?\b(?:spent|gast[eé]|bought|compr[eé]|gassed up|gassed|filled up|fill up|on)\b\s*/i, "").replace(/^\$?[\d.,]+\s*(?:on|en|de|for)?\s*/i, "");
     return { intent: "log_expense", confidence: 0.6, amount: t, expense_category: t, note_text: desc, client_name };
   }
+
+  // "add Mitch address" / "set Jane phone" — SET a field with no value yet; ask for it.
+  const collectM = t.match(/^(?:add|set|update|change|edit|put in)\s+(.+?)(?:'s|s')?\s+(address|phone|number|cell|e-?mail|note)s?\.?\s*$/i);
+  if (collectM) {
+    const f = collectM[2].toLowerCase();
+    const field = /phone|number|cell/.test(f) ? "phone" : /mail/.test(f) ? "email" : /note/.test(f) ? "note" : "address";
+    return { intent: "update_client_info", confidence: 0.72, client_name: cleanName(collectM[1]), collect_field: field as "address" | "phone" | "email" | "note" };
+  }
+  // "add Mitch address 5 oak st" / "set the smiths address to 5 oak" — SET with a value.
+  const addrSetM = t.match(/^(?:add|set|update|change)\s+(.+?)(?:'s)?\s+address\s+(?:is\s+|to\s+|at\s+)?(.+)$/i);
+  if (addrSetM && /\d/.test(addrSetM[2])) return { intent: "update_client_info", confidence: 0.68, client_name: cleanName(addrSetM[1]), address: addrSetM[2].trim() };
 
   // Site notes ("note for the wilsons: big backyard" — colon OR just a trailing phrase)
   const noteM = t.match(/^notes?\s+(?:for|on|about)?\s*(?:the |los |las |el |la )?([a-zà-ÿ][a-zà-ÿ .'’-]+?)\s*[:,-]\s*(.+)$/i);

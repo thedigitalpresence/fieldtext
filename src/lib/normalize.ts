@@ -345,6 +345,9 @@ export function normalizeAction(raw: Record<string, any>, ctx: NormalizeContext)
   if (raw.phone) a.phone = String(raw.phone).trim();
   if (raw.email) a.email = String(raw.email).trim().toLowerCase();
   if (raw.referred_by) a.referred_by = normalizeName(String(raw.referred_by));
+  if (raw.collect_field && ["address", "phone", "email", "note"].includes(String(raw.collect_field))) {
+    a.collect_field = String(raw.collect_field) as "address" | "phone" | "email" | "note";
+  }
   if (raw.expense_category) a.expense_category = normalizeExpenseCategory(String(raw.expense_category));
   if (raw.invoice_kind) a.invoice_kind = /receipt|recibo/i.test(String(raw.invoice_kind)) ? "receipt" : "invoice";
   if (raw.payment_method) a.payment_method = normalizePaymentMethod(String(raw.payment_method));

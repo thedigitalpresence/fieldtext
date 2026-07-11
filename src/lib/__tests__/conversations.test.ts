@@ -904,6 +904,20 @@ test("G13: 'remind me to quote <new person>' adds them + links the reminder", as
   assert.ok((rems as unknown[]).length >= 1, "the reminder is linked to the new prospect (so it fires with the draft offer)");
 });
 
+test("G14: 'add <client> address' (no value) asks for it, then saves the reply", async () => {
+  await reset([{ name: "Mitch K", status: "quoted", amount: 200 }]);
+  const ask = await say("add mitch k address");
+  assert.match(ask, /address/i, `should ask for the address, not give a snapshot: "${ask}"`);
+  assert.ok(!/snapshot|MRR/i.test(ask), "must not fall through to a status snapshot");
+
+  const done = await say("5 Oak St");
+  assert.match(done, /Mitch K/);
+  const id = await bizId();
+  const { data: clients } = await db().from("clients").select("*").eq("business_id", id);
+  const mitch = (clients as { name: string; address: string | null }[]).find((c) => /mitch/i.test(c.name));
+  assert.ok(mitch?.address && /oak/i.test(mitch.address), `address saved: ${mitch?.address}`);
+});
+
 test("scenario count", () => {
   console.log(`\n  ▸ conversation scenarios executed: ${SCENARIOS}\n`);
   assert.ok(SCENARIOS >= 150, `expected a large matrix, got ${SCENARIOS}`);
