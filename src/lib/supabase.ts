@@ -15,6 +15,10 @@ export function db(): SupabaseClient {
   if (_client) return _client;
   _client = createClient(config.supabase.url(), config.supabase.serviceRoleKey(), {
     auth: { persistSession: false, autoRefreshToken: false },
+    // Next.js caches GET fetches by default, which would serve STALE rows from
+    // Supabase SELECTs (this caused the cron heartbeat read to freeze while
+    // writes landed fine). Force every DB call to be fresh.
+    global: { fetch: (url, options) => fetch(url as RequestInfo, { ...options, cache: "no-store" }) },
   });
   return _client;
 }
