@@ -41,6 +41,28 @@ export function todayInTz(tz: string, now: Date = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: safeTz(tz) }).format(now);
 }
 
+/**
+ * The given instant as a wall-clock ISO string WITH the tz offset, e.g.
+ * "2026-07-11T11:34:00-07:00". We hand this to the LLM as "now" so relative
+ * times ("in 5 minutes", "tomorrow at 9") resolve against LOCAL time. Passing a
+ * UTC "...Z" stamp while telling it the timezone is LA made it read the UTC
+ * clock as local and land ~7 hours off.
+ */
+export function isoInTz(date: Date, tz: string): string {
+  const z = safeTz(tz);
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: z, year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+  }).formatToParts(date).reduce((o, x) => { o[x.type] = x.value; return o; }, {} as Record<string, string>);
+  const asUTC = Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour, +parts.minute, +parts.second);
+  const offMin = Math.round((asUTC - date.getTime()) / 60000);
+  const sign = offMin >= 0 ? "+" : "-";
+  const abs = Math.abs(offMin);
+  const oh = String(Math.floor(abs / 60)).padStart(2, "0");
+  const om = String(abs % 60).padStart(2, "0");
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}${sign}${oh}:${om}`;
+}
+
 export function titleCase(s: string): string {
   return s
     .trim()

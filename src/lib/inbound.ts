@@ -8,7 +8,7 @@ import { activateSignup } from "./onboarding";
 import { sendSms, logMessage } from "./twilio";
 import { logSms, logLlm } from "./billing";
 import { businessLang, t } from "./templates";
-import { safeTz } from "./normalize";
+import { safeTz, isoInTz } from "./normalize";
 import type { Business, Lang, PendingState } from "./types";
 
 export interface InboundParams {
@@ -161,9 +161,12 @@ export async function handleInbound(params: InboundParams): Promise<InboundOutco
   }
 
   const clients = await listClients(business.id);
+  const bizTz = safeTz(business.timezone);
   const ctx: ParseContext = {
-    nowISO: new Date().toISOString(),
-    timezone: safeTz(business.timezone),
+    // Local wall-clock time with offset, so "in 5 minutes" resolves in the
+    // business's timezone instead of being misread as a UTC clock.
+    nowISO: isoInTz(new Date(), bizTz),
+    timezone: bizTz,
     businessName: business.name,
     ownerName: business.owner_name,
     lang,
