@@ -11,7 +11,7 @@ import { signSession, verifySession, parseSession } from "@/lib/auth";
 import { hashPassword, verifyPassword, safeEqual } from "@/lib/password";
 import { throttleStatus, recordFailure, clearFailures } from "@/lib/security";
 import { applyPaymentToCharges, reversePaymentFromCharges } from "@/lib/charges";
-import { normalizeAmount, normalizeName, normalizeAddress, computeNextService } from "@/lib/normalize";
+import { normalizeAmount, normalizeName, normalizeAddress, computeNextService, safeTz } from "@/lib/normalize";
 import { toE164 } from "@/lib/phone";
 import type { ChargeStatus, ClientStatus, Lang } from "@/lib/types";
 
@@ -239,7 +239,7 @@ export async function addReminderAction(formData: FormData) {
   let dueISO: string;
   if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     const hhmm = /^\d{2}:\d{2}/.test(time) ? time.slice(0, 5) : "09:00";
-    dueISO = dueAtInTz(date, hhmm, b.timezone || "America/New_York");
+    dueISO = dueAtInTz(date, hhmm, safeTz(b.timezone));
   } else {
     const due = new Date();
     due.setDate(due.getDate() + 3);

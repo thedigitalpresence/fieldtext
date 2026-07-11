@@ -6,6 +6,7 @@ import { monthlyEquivalent } from "@/lib/intents";
 import { totalOutstanding, openBalances, nextCycleDate } from "@/lib/charges";
 import { listPhotos } from "@/lib/attachments";
 import { getForecast, type DayWeather } from "@/lib/weather";
+import { safeTz } from "@/lib/normalize";
 import DashboardClient from "./DashboardClient";
 import type { Client, Job, Payment, Reminder, Message, Lang } from "@/lib/types";
 
@@ -106,7 +107,7 @@ export default async function DashboardPage({ searchParams }: { searchParams?: {
   const scheduledThisWeek = active.filter((c) => c.next_service_on && new Date(c.next_service_on + "T00:00:00").getTime() <= weekEnd).length;
 
   // ── Schedule: 42 days of stops, jobs, reminders — plus weather when a city is set ──
-  const tz = business.timezone || "America/New_York";
+  const tz = safeTz(business.timezone);
   const todayStr = new Date().toLocaleDateString("en-CA", { timeZone: tz }); // YYYY-MM-DD
   const HORIZON = 42; // six full weeks — covers "this month" from any day
   const addDays = (ymd: string, n: number) => {

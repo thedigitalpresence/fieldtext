@@ -8,6 +8,7 @@ import { activateSignup } from "./onboarding";
 import { sendSms, logMessage } from "./twilio";
 import { logSms, logLlm } from "./billing";
 import { businessLang, t } from "./templates";
+import { safeTz } from "./normalize";
 import type { Business, Lang, PendingState } from "./types";
 
 export interface InboundParams {
@@ -162,7 +163,7 @@ export async function handleInbound(params: InboundParams): Promise<InboundOutco
   const clients = await listClients(business.id);
   const ctx: ParseContext = {
     nowISO: new Date().toISOString(),
-    timezone: business.timezone,
+    timezone: safeTz(business.timezone),
     businessName: business.name,
     ownerName: business.owner_name,
     lang,

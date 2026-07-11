@@ -2,7 +2,7 @@ import { db, getPrimaryPhone } from "./supabase";
 import { sendSms, logMessage } from "./twilio";
 import { logSms } from "./billing";
 import { money, periodLabel, businessLang, t } from "./templates";
-import { todayInTz } from "./normalize";
+import { todayInTz, safeTz } from "./normalize";
 import { generateDueCharges, totalOutstanding, openBalances } from "./charges";
 import type { AuthorizedPhone, Business, Client, Expense, Job, Reminder, Lang } from "./types";
 import type { DayWeather } from "./weather";
@@ -76,13 +76,9 @@ export async function cancelQuoteReminders(clientId: string, businessId?: string
 
 export function formatWhen(iso: string, timezone: string, lang: Lang = "en"): string {
   const locale = lang === "es" ? "es-ES" : "en-US";
-  try {
-    return new Intl.DateTimeFormat(locale, {
-      timeZone: timezone, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
-    }).format(new Date(iso));
-  } catch {
-    return new Date(iso).toLocaleString();
-  }
+  return new Intl.DateTimeFormat(locale, {
+    timeZone: safeTz(timezone), weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+  }).format(new Date(iso));
 }
 
 export interface DueSummary {
@@ -219,7 +215,7 @@ export async function runDueForBusiness(business: Business, now: Date): Promise<
 // on infrequent cron. (The old `localHour === hour` gate made digests unreachable.)
 function pastHourAndUnsent(business: Business, now: Date, lastKey: string | undefined, hourSetting?: number): { fire: boolean; localDate: string } {
   const hour = Number(hourSetting ?? business.settings?.digest_hour ?? 7);
-  const localHour = Number(new Intl.DateTimeFormat("en-US", { timeZone: business.timezone, hour: "numeric", hour12: false }).format(now));
+  const localHour = Number(new Intl.DateTimeFormat("en-US", { timeZone: safeTz(business.timezone), hour: "numeric", hour12: false }).format(now));
   const localDate = todayInTz(business.timezone, now);
   return { fire: localHour >= hour && lastKey !== localDate, localDate };
 }
@@ -302,7 +298,7 @@ async function maybeSendDaySheet(business: Business, now: Date): Promise<boolean
 /** Monday money digest: open quotes worth $X + who owes — the retention heartbeat. */
 async function maybeSendWeekly(business: Business, now: Date): Promise<boolean> {
   const localDate = todayInTz(business.timezone, now);
-  const weekday = new Intl.DateTimeFormat("en-US", { timeZone: business.timezone, weekday: "long" }).format(now).toLowerCase();
+  const weekday = new Intl.DateTimeFormat("en-US", { timeZone: safeTz(business.timezone), weekday: "long" }).format(now).toLowerCase();
   if (weekday !== "monday") return false;
   const { fire } = pastHourAndUnsent(business, now, business.settings?.last_weekly_digest_date);
   if (!fire) return false;

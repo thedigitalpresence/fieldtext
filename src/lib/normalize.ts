@@ -22,12 +22,23 @@ export interface NormalizeContext {
 
 // ── Names ─────────────────────────────────────────────────────────────────────
 /** Today's date (YYYY-MM-DD) in a business's timezone — never the server's. */
-export function todayInTz(tz: string, now: Date = new Date()): string {
+/** Fallback timezone when a business's is missing/invalid. Never let times fall
+ *  back to the server clock (UTC on Vercel) — that shows the wrong hour to users. */
+export const DEFAULT_TZ = "America/Los_Angeles";
+
+/** A valid IANA timezone, or the default. Use everywhere before an Intl call. */
+export function safeTz(tz: string | null | undefined): string {
+  if (!tz) return DEFAULT_TZ;
   try {
-    return new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(now);
+    new Intl.DateTimeFormat("en-US", { timeZone: tz });
+    return tz;
   } catch {
-    return now.toISOString().slice(0, 10);
+    return DEFAULT_TZ;
   }
+}
+
+export function todayInTz(tz: string, now: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: safeTz(tz) }).format(now);
 }
 
 export function titleCase(s: string): string {
