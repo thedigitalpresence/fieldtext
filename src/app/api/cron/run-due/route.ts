@@ -22,6 +22,10 @@ function authorized(req: NextRequest): boolean {
 
 async function run(req: NextRequest) {
   if (!authorized(req)) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  // Heartbeat: the pinger reached us. Stamp it before doing the work so a slow /
+  // partial job still counts as "the pinger is alive". Best-effort.
+  const { recordCronRun } = await import("@/lib/heartbeat");
+  await recordCronRun();
   try {
     const summary = await runAllDue();
     return NextResponse.json({ ok: true, ...summary });
