@@ -1249,7 +1249,14 @@ export async function buildSnapshot(business: Business): Promise<string> {
 
   const { data: clientRows } = await db().from("clients").select("*").eq("business_id", business.id);
   const clients = (clientRows ?? []) as Client[];
-  const nameOf = (id: string | null) => clients.find((c) => c.id === id)?.name ?? "(no client)";
+  const isRemoved = (c: Client) => c.status === "lost" || c.status === "completed";
+  // Removed clients still own old jobs/payments/photos; mark their name so the
+  // answer engine treats them as archived, not current.
+  const nameOf = (id: string | null) => {
+    const c = clients.find((x) => x.id === id);
+    if (!c) return "(no client)";
+    return isRemoved(c) ? `${c.name} (removed)` : c.name;
+  };
   const quoted = clients.filter((c) => c.status === "quoted");
   const active = clients.filter((c) => c.status === "active");
   const paused = clients.filter((c) => c.status === "paused");
