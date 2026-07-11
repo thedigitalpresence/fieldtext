@@ -796,7 +796,11 @@ function finishIntake(client: Client, baseAction: ParsedAction, session: ActionS
   const confirmation = baseAction.awaiting_quote
     ? t.prospectAdded(client.name, lang)
     : t.quoteLogged(clientSummary(client, lang), lang);
-  if (!baseAction.client_is_new) return confirmation;
+  // Chase details for a brand-new client OR whenever you're adding a quote
+  // prospect (you'll want their address/phone before you send the quote), as
+  // long as something's actually missing.
+  const shouldChase = baseAction.client_is_new || baseAction.awaiting_quote;
+  if (!shouldChase) return confirmation;
   // Chase the useful profile fields. (Name is NOT chased — "García" / "The Smiths"
   // are perfectly valid client names.)
   const missing: string[] = [];
@@ -807,9 +811,10 @@ function finishIntake(client: Client, baseAction: ParsedAction, session: ActionS
     session.pending = { kind: "complete_client", action: { ...baseAction, client_id: client.id }, missing, expiresAt: pendingExpiry() };
     return `${confirmation}\n${t.needInfo(client.name, missing, lang)}`;
   }
+  // A bare quote prospect isn't a scheduled client yet — skip the schedule step.
   // Recurring service with no visit schedule yet → ask when it starts, how
   // often, and what day (the anchor the calendar and reminders depend on).
-  if (needsSchedule(client)) {
+  if (!baseAction.awaiting_quote && needsSchedule(client)) {
     session.pending = { kind: "complete_client", action: { ...baseAction, client_id: client.id }, missing: ["schedule"], expiresAt: pendingExpiry() };
     return `${confirmation}\n${t.needSchedule(client.name, lang)}`;
   }

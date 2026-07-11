@@ -918,6 +918,21 @@ test("G14: 'add <client> address' (no value) asks for it, then saves the reply",
   assert.ok(mitch?.address && /oak/i.test(mitch.address), `address saved: ${mitch?.address}`);
 });
 
+test("G16: adding a quote prospect offers to add missing details", async () => {
+  // Mitch already exists (no address/phone) — quoting him should still offer details.
+  await reset([{ name: "Mitch K", status: "quoted" }]);
+  const reply = await say("need to send mitch k a quote");
+  assert.match(reply, /Mitch K/);
+  assert.match(reply, /address|phone/i, `should offer to add details: "${reply}"`);
+
+  // And the follow-up captures it.
+  const saved = await say("5 Oak St");
+  const id = await bizId();
+  const { data: clients } = await db().from("clients").select("*").eq("business_id", id);
+  const mitch = (clients as { name: string; address: string | null }[]).find((c) => /mitch/i.test(c.name));
+  assert.ok(mitch?.address && /oak/i.test(mitch.address), `address captured: ${mitch?.address}`);
+});
+
 test("scenario count", () => {
   console.log(`\n  ▸ conversation scenarios executed: ${SCENARIOS}\n`);
   assert.ok(SCENARIOS >= 150, `expected a large matrix, got ${SCENARIOS}`);
