@@ -21,9 +21,9 @@ export async function recordCronRun(): Promise<void> {
     // Explicit update-or-insert (upsert onConflict was unreliable): guarantees
     // lastRunAt actually advances, otherwise the health check false-alarms.
     const res = data
-      ? await db().from("system_state").update({ value, updated_at: now }).eq("key", KEY)
-      : await db().from("system_state").insert({ key: KEY, value, updated_at: now });
-    if (res.error) console.error("[heartbeat] record write failed:", res.error.message);
+      ? await db().from("system_state").update({ value, updated_at: now }).eq("key", KEY).select()
+      : await db().from("system_state").insert({ key: KEY, value, updated_at: now }).select();
+    console.log(`[heartbeat] record: existing=${!!data} rows=${res.data?.length ?? 0} err=${res.error?.message ?? "none"}`);
   } catch (e) {
     console.error("[heartbeat] record failed:", e);
   }
