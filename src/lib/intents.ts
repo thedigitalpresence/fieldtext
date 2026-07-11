@@ -916,9 +916,41 @@ async function setReminder(business: Business, p: ParsedAction, sourceMessageId:
   if (!p.due_at) return t.whenRemind(lang);
   const text = p.reminder_text || (lang === "es" ? "dar seguimiento" : "follow up");
   const matches = p.client_name ? await matchClients(business.id, { name: p.client_name }) : [];
-  const client = matches.length === 1 ? matches[0] : null;
+  let client = matches.length === 1 ? matches[0] : null;
+
+  // "remind me to quote Mitch K" — a quote to-do for someone not in the book yet.
+  // Create them as a prospect and link the reminder, so it fires with the draft
+  // offer (instead of a bare "Reminder: quote mitch k" with no one attached).
+  let createdProspect = false;
+  if (!client && /\b(quote|cotiz)/i.test(text)) {
+    const name = p.client_name ?? quoteReminderName(text);
+    if (name) {
+      const byName = await matchClients(business.id, { name });
+      if (byName.length === 1) client = byName[0];
+      else {
+        client = await createClient(business.id, { name, status: "quoted" });
+        createdProspect = true;
+      }
+    }
+  }
+
   await createReminder({ businessId: business.id, text, dueISO: p.due_at, clientId: client?.id ?? null, sourceMessageId, kind: "manual" });
-  return t.reminderSet(formatWhen(p.due_at, business.timezone, lang), text, lang);
+  const when = formatWhen(p.due_at, business.timezone, lang);
+  return createdProspect && client
+    ? t.reminderSetProspect(when, client.name, lang)
+    : t.reminderSet(when, text, lang);
+}
+
+/** Pull the person's name out of a "quote X" / "send X a quote" reminder text. */
+function quoteReminderName(text: string): string | null {
+  const m =
+    text.match(/\bsend\s+(?:a\s+|the\s+)?quote\s+(?:for|to)\s+(.+)$/i) ||
+    text.match(/\bsend\s+(.+?)\s+(?:a\s+|the\s+|an\s+)?quote\b/i) ||
+    text.match(/\bquote\s+(?:for\s+|to\s+)?(.+)$/i);
+  if (!m) return null;
+  const raw = m[1].trim().replace(/[.?!,]+$/, "");
+  if (!raw || raw.length > 40 || !/[a-zà-ÿ]/i.test(raw)) return null;
+  return normalizeName(raw) || null;
 }
 
 /** Apply a correction ("no it's 333 not 233", "change angela to weekly") to the last-touched client. */

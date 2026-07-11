@@ -888,6 +888,22 @@ test("G12: quote to-do reminder is specific, offers a draft, then chases on SENT
   assert.ok((after as unknown[]).length >= 1, "close-loop follow-ups scheduled after SENT");
 });
 
+test("G13: 'remind me to quote <new person>' adds them + links the reminder", async () => {
+  await reset([]); // empty book — Mitch K isn't a client yet
+  const reply = await say("remind me tomorrow to quote mitch k");
+  assert.match(reply, /Reminder set/i);
+  assert.match(reply, /Mitch K/, `should confirm the prospect was added: "${reply}"`);
+
+  const id = await bizId();
+  const { data: clients } = await db().from("clients").select("*").eq("business_id", id);
+  const mitch = (clients as { id: string; name: string; status: string }[]).find((c) => /mitch/i.test(c.name));
+  assert.ok(mitch, "Mitch K was created as a prospect");
+  assert.equal(mitch!.name, "Mitch K", "name is capitalized");
+
+  const { data: rems } = await db().from("reminders").select("*").eq("client_id", mitch!.id).eq("kind", "manual");
+  assert.ok((rems as unknown[]).length >= 1, "the reminder is linked to the new prospect (so it fires with the draft offer)");
+});
+
 test("scenario count", () => {
   console.log(`\n  ▸ conversation scenarios executed: ${SCENARIOS}\n`);
   assert.ok(SCENARIOS >= 150, `expected a large matrix, got ${SCENARIOS}`);

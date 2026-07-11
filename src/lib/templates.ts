@@ -132,6 +132,11 @@ export const t = {
 
   reminderDue: (text: string, lang: Lang) => (lang === "es" ? `⏰ Recordatorio: ${text}` : `⏰ Reminder: ${text}`),
 
+  reminderSetProspect: (when: string, name: string, lang: Lang) =>
+    lang === "es"
+      ? `Recordatorio listo ✅ Agregué a ${name} y te aviso el ${when} para cotizarle. Cuando toque, responde BORRADOR y te escribo el mensaje.`
+      : `Reminder set ✅ Added ${name} and I'll text you ${when} to quote them. When it's time, reply DRAFT and I'll write the message.`,
+
   quoteNudge: (name: string, amountStr: string, lang: Lang) =>
     lang === "es"
       ? `📣 Da seguimiento a ${name}${amountStr} — la cotización sigue abierta.`
