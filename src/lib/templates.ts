@@ -132,6 +132,13 @@ export const t = {
 
   reminderDue: (text: string, lang: Lang) => (lang === "es" ? `⏰ Recordatorio: ${text}` : `⏰ Reminder: ${text}`),
 
+  notSure: (text: string, lang: Lang) => {
+    const q = text.trim().replace(/\s+/g, " ").slice(0, 60);
+    return lang === "es"
+      ? `No estoy 100% seguro de qué quisiste decir con "${q}". ¿Lo puedes decir de otra forma? Por ejemplo: "recuérdame mañana cotizar a Mitch" o "el teléfono de Mitch es 555-1234".`
+      : `I'm not totally sure what you meant by "${q}". Can you say it another way? For example: "remind me tomorrow to quote Mitch" or "Mitch's phone is 555-1234".`;
+  },
+
   reminderSetProspect: (when: string, name: string, lang: Lang) =>
     lang === "es"
       ? `Recordatorio listo ✅ Agregué a ${name} y te aviso el ${when} para cotizarle. Cuando toque, responde BORRADOR y te escribo el mensaje.`

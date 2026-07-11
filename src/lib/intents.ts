@@ -59,6 +59,10 @@ export async function executeParsed(
   // The parser asked us to clarify rather than guess.
   if (result.needs_clarification) return result.needs_clarification;
 
+  // Trust scale: if the parse is shaky or self-contradictory, ASK instead of
+  // firing actions we're not sure about (e.g. "add Mitch to reminder quote now").
+  if (looksAmbiguous(result)) return t.notSure(rawText, lang);
+
   const replies: string[] = [];
   for (const action of result.actions) {
     try {
@@ -70,6 +74,25 @@ export async function executeParsed(
   }
   const out = replies.filter(Boolean).join("\n");
   return out || t.helpHint(lang);
+}
+
+/**
+ * The "trust scale": decide whether a parse is too shaky to act on. We ask for
+ * clarification when nothing is confident, when a short message was split into
+ * conflicting actions, or when a bare "add X <field>" (no value) is mixed with
+ * other actions (a tell-tale sign the message was misparsed). Pure query/help
+ * parses are never gated — they have their own soft handling.
+ */
+export function looksAmbiguous(result: ParseResult): boolean {
+  const acts = result.actions ?? [];
+  if (!acts.length) return false;
+  const intents = new Set(acts.map((a) => a.intent));
+  if ([...intents].every((i) => i === "query" || i === "help")) return false;
+  const confs = acts.map((a) => a.confidence ?? 0);
+  const top = Math.max(...confs);
+  const min = Math.min(...confs);
+  const bareCollectWithOthers = acts.length > 1 && acts.some((a) => a.intent === "update_client_info" && a.collect_field);
+  return top < 0.5 || bareCollectWithOthers || (acts.length > 1 && intents.size > 1 && min < 0.55);
 }
 
 async function runAction(
