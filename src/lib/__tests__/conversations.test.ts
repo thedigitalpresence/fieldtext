@@ -1002,6 +1002,32 @@ test("G21: a thin reminder task confirms, offers a fix, and the reply updates it
   assert.ok(!/add detail/i.test(conf2), `two-word task should not trigger the offer: "${conf2}"`);
 });
 
+test("G22: the clarify reply 'send quote please' updates the reminder, not hijacked as a command", async () => {
+  await reset([{ name: "Elena Shackelford", status: "quoted", amount: 3000 }]);
+  await say("remind me tomorrow to send");
+  const conf = await say("11am");
+  assert.match(conf, /Reminder set ✅/i, conf);
+  assert.match(conf, /add detail|full task/i, conf);
+  // "Send quote please" is command-SHAPED but has no target — it's the task detail.
+  const upd = await say("Send quote please");
+  assert.match(upd, /Updated ✅/, `must update the reminder, not ask who the quote is for: "${upd}"`);
+  assert.match(upd, /send quote please/i, upd);
+  // An ANCHORED command still wins over the open offer.
+  await say("remind me tomorrow to call");
+  await say("9am");
+  const cmd = await say("elena shackelford paid 300");
+  assert.match(cmd, /\$300/, `anchored command passes through: "${cmd}"`);
+});
+
+test("G23: 'who do you want to send a quote to?' remembers, so a bare name completes the quote", async () => {
+  await reset([{ name: "Elena Shackelford", status: "quoted", amount: 3000 }]);
+  const ask = await say("new quote");
+  assert.match(ask, /who is the quote for/i, ask);
+  const done = await say("elena shackelford");
+  assert.ok(!/here'?s your|OPEN QUOTES|book right now/i.test(done), `must not dump the whole book: "${done}"`);
+  assert.match(done, /Elena Shackelford/, `the name answer should land on the quote flow: "${done}"`);
+});
+
 test("scenario count", () => {
   console.log(`\n  ▸ conversation scenarios executed: ${SCENARIOS}\n`);
   assert.ok(SCENARIOS >= 150, `expected a large matrix, got ${SCENARIOS}`);

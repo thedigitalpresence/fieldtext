@@ -679,9 +679,11 @@ export async function resolvePending(
     if (/^(no|nope|nah|all good|looks good|that'?s (right|fine)|correct|ok|okay|👍|s[ií]|bien|est[aá] bien|perfecto)\.?$/i.test(s)) {
       return "👍";
     }
-    // A real command → run it; the offer simply lapses (it was optional).
+    // Only an ANCHORED command (a real name / amount / date) or a question wins
+    // here. A vague command-shaped phrase ("send quote please") IS the task
+    // detail we just asked for — hijacking it strands the user.
     const probe = heuristicParse(a, ctx).actions[0];
-    if (probe && probe.intent !== "help" && probe.confidence >= 0.55) return null;
+    if (probe && probe.confidence >= 0.55 && (probe.intent === "query" || probeAnchored(probe))) return null;
     if (s.length < 2 || s.length > 200) return null;
     const { data: remRow } = await db().from("reminders").select("*").eq("id", rid).eq("business_id", business.id).maybeSingle();
     if (!remRow) return null;
@@ -693,6 +695,18 @@ export async function resolvePending(
     }
     await db().from("reminders").update({ text: newText }).eq("id", rid);
     return t.reminderUpdated(formatWhen(rem.due_at, business.timezone, lang), newText, lang);
+  }
+
+  // "Who do you want to send a quote to?" — the answer is the client's name.
+  if (pending.kind === "quote_who") {
+    const s = a.trim();
+    if (/^(cancel|never ?mind|nada|olv[ií]dalo|no)\.?$/i.test(s)) return "👍";
+    // An anchored command or question wins; a bare name is the answer we asked for.
+    const probe = heuristicParse(a, ctx).actions[0];
+    if (probe && probe.confidence >= 0.55 && (probe.intent === "query" || probeAnchored(probe))) return null;
+    const name = normalizeName(s);
+    if (!name || s.length > 60) { session.pending = pending; return t.whoIsQuoteFor(lang); }
+    return logQuote(business, { ...pending.action, client_name: name }, ctx, session, lang);
   }
   return null;
 }
@@ -775,7 +789,12 @@ function fmtDay(ymd: string | null | undefined, lang: string): string {
 
 // ── Handlers ──────────────────────────────────────────────────────────────────
 async function logQuote(business: Business, p: ParsedAction, ctx: ParseContext, session: ActionSession, lang: Lang): Promise<string> {
-  if (!p.client_name && !p.address && !p.client_id) return t.whoIsQuoteFor(lang);
+  if (!p.client_name && !p.address && !p.client_id) {
+    // Remember that we asked, so the bare-name answer ("Elena") completes the
+    // quote instead of being parsed cold as a random query.
+    session.pending = { kind: "quote_who", action: p, expiresAt: pendingExpiry() };
+    return t.whoIsQuoteFor(lang);
+  }
   const sched = schedulePatch(p, ctx.nowISO);
 
   let client: Client | null = null;
@@ -1146,6 +1165,16 @@ async function setReminder(
 function isThinTask(text: string): boolean {
   const core = text.split(" · ")[0].trim();
   return core.split(/\s+/).filter(Boolean).length <= 1;
+}
+
+/** Does a probed command carry a concrete target (a plausible name, an amount, a
+ *  date)? Vague command-shaped phrases ("send quote please" -> log_quote with no
+ *  client) are NOT commands worth hijacking an open question for. */
+function probeAnchored(p: ParsedAction): boolean {
+  if (p.intent === "help") return false;
+  if (p.amount != null || p.due_at != null) return true;
+  const name = (p.client_name ?? "").trim();
+  return name.length > 2 && !/^(the|a|an|los|las|el|la|un|una)$/i.test(name);
 }
 
 /** Pull the person's name out of a "quote X" / "send X a quote" reminder text. */
