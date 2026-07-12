@@ -106,6 +106,7 @@ function systemPrompt(ctx: ParseContext): string {
     `The owner texts fast: lowercase, no punctuation, abbreviations, typos, English / Spanish / Spanglish, and often several facts in one message. Detect the language per message and extract the same canonical data regardless.`,
     `Return an ARRAY of actions via the record_actions tool — one message can contain several. ALWAYS split these out:`,
     `  • "Quoting James at 222 West St, need to send the quote tomorrow" = TWO actions: log_quote (James, 222 West St) AND set_reminder (reminder_text "send James quote", due tomorrow).`,
+    `  • set_reminder: reminder_text is the TASK ONLY — time words NEVER belong in it. "New reminder for elena send later today" = client_name "Elena", due_at today, reminder_text "send" (NOT "send later"; "later today" is the WHEN). "call bob tomorrow morning" -> reminder_text "call bob", due tomorrow morning.`,
     `  • "Need to send quote for Jane" / "gotta quote Jane" / "send Jane a quote" (a prospect you haven't priced yet) = TWO actions: log_quote (Jane, awaiting_quote=true, NO amount — this creates the prospect so their phone/notes get collected) AND set_reminder (reminder_text "send Jane quote", due tomorrow if no date given). Do NOT invent an amount for these.`,
     `  • An obligation phrase — "need to / gotta / have to / got to / don't forget to / remember to <do X> <time>" — is ALWAYS its own set_reminder action, in addition to whatever else is in the message.`,
     ``,
@@ -376,9 +377,20 @@ function parseClause(text: string, _ctx: ParseContext): Record<string, any> | nu
     if (name) return { intent: "log_quote", confidence: 0.6, client_name: name, awaiting_quote: true };
   }
 
+  // "New reminder for elena send later today" — client + task + time in one line.
+  const newRemM = t.match(/^new reminder\s+for\s+(.+?)\s+(send|call|text|email|check|pay|invoice|follow(?:\s+up)?)\b(.*)$/i);
+  if (newRemM) {
+    return {
+      intent: "set_reminder", confidence: 0.65,
+      client_name: cleanName(newRemM[1]),
+      reminder_text: `${newRemM[2]}${newRemM[3]}`.trim(),
+      due_at: t,
+    };
+  }
+
   // Reminder — incl. obligations ("need to send quote tomorrow") when a time is present
   const isObligation = /\b(need|needs|have|has|got)\s+to\b|gotta|don'?t\s+forget/i.test(lower) && HAS_TIME.test(lower);
-  if (/\b(remind me|remember to|follow up with|ping me|don'?t let me forget|dont let me forget|recu[eé]rdame|recordarme|dar seguimiento)/i.test(lower) || isObligation) {
+  if (/\b(remind me|remember to|new reminder|follow up with|ping me|don'?t let me forget|dont let me forget|recu[eé]rdame|recordarme|dar seguimiento)/i.test(lower) || isObligation) {
     let body = t
       // \b after "to" so "remind me tomorrow ..." doesn't become "morrow ..."
       .replace(/^.*?(remind me to\b|remind me|remember to\b|ping me about|ping me to\b|ping me|don'?t let me forget to\b|don'?t let me forget|recu[eé]rdame que|recu[eé]rdame|recordarme|need to\b|needs to\b|have to\b|has to\b|got to\b|gotta|don'?t forget to\b|don'?t forget)\s*/i, "")

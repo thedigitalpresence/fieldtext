@@ -295,6 +295,26 @@ const WEEKDAYS: Record<string, number> = {
   domingo: 0, lunes: 1, martes: 2, miercoles: 3, "miércoles": 3, jueves: 4, viernes: 5, sabado: 6, "sábado": 6,
 };
 /** Resolve a relative date phrase to { ymd, iso } at 9am local (best-effort, UTC math). */
+/**
+ * Time words never belong in a reminder's TASK — they're the WHEN, which lives
+ * in due_at. Deterministic backstop for parser slips like "send later today"
+ * -> task "send later". Strips time phrases from the edges only, so a task
+ * like "reschedule tuesday's visit" (time word mid-task) is left alone.
+ */
+export function scrubReminderTime(text: string): string {
+  const TIME = "(?:later|today|tonight|tomorrow|(?:this |in the |por la )?(?:morning|afternoon|evening|tarde|noche)|this week(?:end)?|next (?:week|month)|(?:on )?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)s?|ma[ñn]ana|hoy|esta (?:tarde|noche|semana)|(?:at |a las? )?\\d{1,2}:\\d{2}\\s*(?:am|pm|a\\.m\\.|p\\.m\\.)?|(?:at |a las? )?\\d{1,2}\\s*(?:am|pm|a\\.m\\.|p\\.m\\.)|noon|mediod[ií]a)";
+  let out = text;
+  for (let i = 0; i < 4; i++) {
+    const next = out
+      .replace(new RegExp(`(?:^|\\s)${TIME}\\s*$`, "i"), "")
+      .replace(new RegExp(`^${TIME}(?:\\s+|$)`, "i"), "")
+      .trim();
+    if (next === out) break;
+    out = next;
+  }
+  return out || text; // never scrub down to nothing
+}
+
 export function resolveDate(text: string, nowISO: string): { ymd: string; iso: string } | null {
   const now = new Date(nowISO);
   const lower = text.toLowerCase();
@@ -350,7 +370,7 @@ export function normalizeAction(raw: Record<string, any>, ctx: NormalizeContext)
   if (raw.payment_status) a.payment_status = normalizePaymentStatus(String(raw.payment_status));
   if (raw.job_description) a.job_description = String(raw.job_description).trim();
   if (raw.query_text) a.query_text = String(raw.query_text).trim();
-  if (raw.reminder_text) a.reminder_text = String(raw.reminder_text).trim().replace(/\s+/g, " ");
+  if (raw.reminder_text) a.reminder_text = scrubReminderTime(String(raw.reminder_text).trim().replace(/\s+/g, " "));
   if (raw.correction_text) a.correction_text = String(raw.correction_text).trim();
 
   // Roadmap entities.

@@ -1028,6 +1028,17 @@ test("G23: 'who do you want to send a quote to?' remembers, so a bare name compl
   assert.match(done, /Elena Shackelford/, `the name answer should land on the quote flow: "${done}"`);
 });
 
+test("G24: 'new reminder for elena send later today' — task is 'send', not 'send later'", async () => {
+  await reset([{ name: "Elena", status: "quoted", amount: 3000 }]);
+  const ask = await say("New reminder for elena send later today");
+  assert.match(ask, /what time/i, ask);
+  const conf = await say("12:08");
+  assert.match(conf, /Reminder set ✅/i, conf);
+  assert.match(conf, /12:08 PM/, conf);
+  assert.match(conf, /send · Elena/, `task should be 'send' tagged with Elena: "${conf}"`);
+  assert.ok(!/send later/i.test(conf), `'later today' is the WHEN, not the task: "${conf}"`);
+});
+
 test("scenario count", () => {
   console.log(`\n  ▸ conversation scenarios executed: ${SCENARIOS}\n`);
   assert.ok(SCENARIOS >= 150, `expected a large matrix, got ${SCENARIOS}`);
