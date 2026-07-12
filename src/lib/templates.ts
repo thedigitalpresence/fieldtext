@@ -144,6 +144,12 @@ export const t = {
       ? `Recordatorio listo ✅ Agregué a ${name} y te aviso el ${when} para cotizarle. Cuando toque, responde BORRADOR y te escribo el mensaje.`
       : `Reminder set ✅ Added ${name} and I'll text you ${when} to quote them. When it's time, reply DRAFT and I'll write the message.`,
 
+  // Said right when a quote is logged, so the owner KNOWS the chase is armed.
+  followupPlan: (days: number, lang: Lang) => {
+    if (lang === "es") return days === 1 ? `📣 Te recuerdo mañana para darle seguimiento.` : `📣 Te recuerdo en ${days} días para darle seguimiento.`;
+    return days === 1 ? `📣 I'll remind you tomorrow to follow up.` : `📣 I'll remind you in ${days} days to follow up.`;
+  },
+
   quoteNudge: (name: string, amountStr: string, lang: Lang) =>
     lang === "es"
       ? `📣 Da seguimiento a ${name}${amountStr} — la cotización sigue abierta.`
@@ -193,10 +199,10 @@ export const t = {
       ? `¡Hola ${first}! Gracias por escribirnos. Para ${service}${at}, lo podemos hacer por ${price}. Avísame si quieres seguir adelante.`
       : `Hi ${first}! Thanks for reaching out. For ${service}${at}, we can do ${price}. Let me know if you'd like to move forward.`;
   },
-  quoteDraftSentAck: (name: string, lang: Lang) =>
+  quoteDraftSentAck: (name: string, days: number, lang: Lang) =>
     lang === "es"
-      ? `¡Bien! Marqué la cotización de ${name} como enviada y le doy seguimiento para que no se enfríe. 📣`
-      : `Nice — marked ${name}'s quote as sent. I'll chase the follow-up so it doesn't go cold. 📣`,
+      ? `¡Bien! Marqué la cotización de ${name} como enviada. Te recuerdo en ${days} día${days === 1 ? "" : "s"} para darle seguimiento. 📣`
+      : `Nice. Marked ${name}'s quote as sent. I'll remind you in ${days} day${days === 1 ? "" : "s"} to follow up. 📣`,
   quoteDraftSkip: (name: string, lang: Lang) =>
     lang === "es" ? `👍 Sin problema — te recuerdo de nuevo con ${name}.` : `👍 No problem — I'll remind you again about ${name}.`,
 

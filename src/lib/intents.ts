@@ -603,7 +603,8 @@ export async function resolvePending(
         if (/\bquote\b|cotiz/i.test(rr.text)) await db().from("reminders").update({ status: "cancelled" }).eq("id", rr.id);
       }
       await scheduleQuoteReminders(business, { ...client, status: "quoted" });
-      return t.quoteDraftSentAck(client.name, lang);
+      const firstDay = (business.settings?.quote_reminder_days ?? [2, 5, 7, 14])[0] ?? 2;
+      return t.quoteDraftSentAck(client.name, firstDay, lang);
     }
     // "draft" / "yes" — send TWO texts: instructions, then the clean copy-paste
     // message. Keep listening for SENT.
@@ -810,8 +811,14 @@ async function logQuote(business: Business, p: ParsedAction, ctx: ParseContext, 
     return finishIntake(client, { ...p, client_id: client.id, client_is_new: isNew }, session, lang);
   }
 
-  if (targetStatus === "quoted") await scheduleQuoteReminders(business, client);
-  else await cancelQuoteReminders(client.id, business.id);
+  let followupNotice = "";
+  if (targetStatus === "quoted") {
+    await scheduleQuoteReminders(business, client);
+    // Tell the owner the chase is armed ("I'll remind you in 2 days"), so the
+    // close-loop is visible instead of silent.
+    const firstDay = (business.settings?.quote_reminder_days ?? [2, 5, 7, 14])[0] ?? 2;
+    followupNotice = `\n${t.followupPlan(firstDay, lang)}`;
+  } else await cancelQuoteReminders(client.id, business.id);
 
   // Missing the price? Save what we have, remember the question, ask for it.
   // (client_is_new keeps the completeness chase alive after the price arrives.)
@@ -820,7 +827,7 @@ async function logQuote(business: Business, p: ParsedAction, ctx: ParseContext, 
     return t.whatAmount(client.name, lang);
   }
 
-  return finishIntake(client, { ...p, client_id: client.id, client_is_new: isNew }, session, lang);
+  return finishIntake(client, { ...p, client_id: client.id, client_is_new: isNew }, session, lang) + followupNotice;
 }
 
 /**

@@ -955,6 +955,14 @@ test("G18: a new same-last-name person doesn't dredge up removed clients", async
   assert.match(r, /Jaime Shackelford/, "creates Jaime as a new person");
 });
 
+test("G19: logging a quote announces the follow-up plan", async () => {
+  await reset([]);
+  const reply = await say("quoted jane miller at 5 oak st for $200/mo mowing");
+  assert.match(reply, /Jane Miller|Quoted/i);
+  assert.match(reply, /remind you in 2 days to follow up/i, `should announce the chase: "${reply}"`);
+  assert.ok(!reply.includes("—"), "no em-dashes");
+});
+
 test("scenario count", () => {
   console.log(`\n  ▸ conversation scenarios executed: ${SCENARIOS}\n`);
   assert.ok(SCENARIOS >= 150, `expected a large matrix, got ${SCENARIOS}`);
