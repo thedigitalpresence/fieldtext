@@ -979,6 +979,29 @@ test("G20: inline service in a quote is captured, not lumped into the name", asy
   assert.ok(!/the service/i.test(reply), `should not re-ask for the service: "${reply}"`);
 });
 
+test("G21: a thin reminder task confirms, offers a fix, and the reply updates it", async () => {
+  await reset([]);
+  const ask = await say("remind me tomorrow to send");
+  assert.match(ask, /what time/i, ask);
+  const conf = await say("9am");
+  assert.match(conf, /Reminder set ✅/i, conf);
+  assert.match(conf, /add detail|full task/i, `thin task should offer a fix: "${conf}"`);
+
+  const upd = await say("send the final estimate");
+  assert.match(upd, /Updated ✅/, upd);
+  assert.match(upd, /final estimate/, upd);
+
+  const id = await bizId();
+  const { data: rems } = await db().from("reminders").select("*").eq("business_id", id).eq("status", "pending");
+  assert.match((rems as { text: string }[])[0]?.text ?? "", /final estimate/, "stored text updated");
+
+  // A normal task doesn't nag for detail.
+  await reset([]);
+  const conf2 = await say("remind me tomorrow at 9am to grab mulch");
+  assert.match(conf2, /Reminder set ✅/i, conf2);
+  assert.ok(!/add detail/i.test(conf2), `two-word task should not trigger the offer: "${conf2}"`);
+});
+
 test("scenario count", () => {
   console.log(`\n  ▸ conversation scenarios executed: ${SCENARIOS}\n`);
   assert.ok(SCENARIOS >= 150, `expected a large matrix, got ${SCENARIOS}`);

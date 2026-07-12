@@ -153,6 +153,14 @@ export const t = {
       ? `Listo, ${dayStr}. ¿A qué hora te escribo? (ej. "9am", "2:30pm", "mediodía")`
       : `Got it, ${dayStr}. What time should I text you? (e.g. "9am", "2:30pm", "noon")`,
 
+  // Offered after a THIN reminder task ("send"): fixing it is one reply away.
+  reminderClarifyOffer: (lang: Lang) =>
+    lang === "es"
+      ? `¿Quieres agregar detalle? Responde con la tarea completa (ej. "enviar la cotización") y la actualizo.`
+      : `Want to add detail? Reply with the full task (e.g. "send the quote") and I'll update it.`,
+  reminderUpdated: (when: string, text: string, lang: Lang) =>
+    lang === "es" ? `Actualizado ✅ Te aviso el ${when}: ${text}` : `Updated ✅ I'll text you ${when}: ${text}`,
+
   reminderSetProspect: (when: string, name: string, lang: Lang) =>
     lang === "es"
       ? `Recordatorio listo ✅ Agregué a ${name} y te aviso el ${when} para cotizarle. Cuando toque, responde BORRADOR y te escribo el mensaje.`

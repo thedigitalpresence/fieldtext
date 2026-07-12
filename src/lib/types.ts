@@ -28,12 +28,13 @@ export interface BusinessSettings {
 
 /** Conversation memory: the pending question the next inbound text may answer. */
 export interface PendingState {
-  kind: "which_client" | "confirm_create" | "missing_amount" | "confirm_match" | "complete_client" | "attach_photo" | "quote_status" | "quote_draft" | "update_field" | "reminder_time";
+  kind: "which_client" | "confirm_create" | "missing_amount" | "confirm_match" | "complete_client" | "attach_photo" | "quote_status" | "quote_draft" | "update_field" | "reminder_time" | "reminder_detail";
   action: ParsedAction; // the action to run once resolved
   candidateIds?: string[]; // which_client choices in order / confirm_match's single candidate
   missing?: string[]; // complete_client: which fields we're still chasing ("name"|"address"|"phone")
   media?: { url: string; contentType?: string }[]; // attach_photo: the photos waiting for a client
   field?: string; // update_field: which field to capture ("address"|"phone"|"email"|"note")
+  reminderId?: string; // reminder_detail: which reminder a clarifying reply updates
   expiresAt: string; // ISO; stale questions are ignored
 }
 

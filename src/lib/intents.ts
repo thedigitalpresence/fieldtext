@@ -661,8 +661,38 @@ export async function resolvePending(
     }
     const ymd = todayInTz(business.timezone, new Date(base));
     const dueISO = wallTimeToISO(ymd, `${String(tm.h).padStart(2, "0")}:${String(tm.m).padStart(2, "0")}`, business.timezone);
-    await createReminder({ businessId: business.id, text, dueISO, clientId: pending.action.client_id ?? null, kind: "manual" });
-    return t.reminderSet(formatWhen(dueISO, business.timezone, lang), text, lang);
+    const created = await createReminder({ businessId: business.id, text, dueISO, clientId: pending.action.client_id ?? null, kind: "manual" });
+    const confirm = t.reminderSet(formatWhen(dueISO, business.timezone, lang), text, lang);
+    if (created && isThinTask(text)) {
+      session.pending = { kind: "reminder_detail", reminderId: created.id, action: { intent: "set_reminder", confidence: 1 }, expiresAt: pendingExpiry() };
+      return `${confirm}\n${t.reminderClarifyOffer(lang)}`;
+    }
+    return confirm;
+  }
+
+  // Optional clarify offer after a thin reminder: the next reply (if it isn't a
+  // real command) becomes the reminder's full task text.
+  if (pending.kind === "reminder_detail") {
+    const rid = pending.reminderId;
+    if (!rid) return null;
+    const s = a.trim();
+    if (/^(no|nope|nah|all good|looks good|that'?s (right|fine)|correct|ok|okay|👍|s[ií]|bien|est[aá] bien|perfecto)\.?$/i.test(s)) {
+      return "👍";
+    }
+    // A real command → run it; the offer simply lapses (it was optional).
+    const probe = heuristicParse(a, ctx).actions[0];
+    if (probe && probe.intent !== "help" && probe.confidence >= 0.55) return null;
+    if (s.length < 2 || s.length > 200) return null;
+    const { data: remRow } = await db().from("reminders").select("*").eq("id", rid).eq("business_id", business.id).maybeSingle();
+    if (!remRow) return null;
+    const rem = remRow as { due_at: string; client_id: string | null };
+    let newText = s;
+    if (rem.client_id) {
+      const c = (await listClients(business.id)).find((x) => x.id === rem.client_id);
+      if (c) newText = t.taggedReminder(newText, c.name);
+    }
+    await db().from("reminders").update({ text: newText }).eq("id", rid);
+    return t.reminderUpdated(formatWhen(rem.due_at, business.timezone, lang), newText, lang);
   }
   return null;
 }
@@ -1099,11 +1129,23 @@ async function setReminder(
     return prospectLine + t.whatTimeRemind(dayStr, lang);
   }
 
-  await createReminder({ businessId: business.id, text, dueISO: p.due_at, clientId: client?.id ?? null, sourceMessageId, kind: "manual" });
+  const created = await createReminder({ businessId: business.id, text, dueISO: p.due_at, clientId: client?.id ?? null, sourceMessageId, kind: "manual" });
   const when = formatWhen(p.due_at, business.timezone, lang);
-  return createdProspect && client
+  const confirm = createdProspect && client
     ? t.reminderSetProspect(when, client.name, lang)
     : t.reminderSet(when, text, lang);
+  // Thin task ("send") → confirm what we captured and offer a one-reply fix.
+  if (created && isThinTask(text) && !session.pending) {
+    session.pending = { kind: "reminder_detail", reminderId: created.id, action: { intent: "set_reminder", confidence: 1 }, expiresAt: pendingExpiry() };
+    return `${confirm}\n${t.reminderClarifyOffer(lang)}`;
+  }
+  return confirm;
+}
+
+/** A reminder task with no real content ("send", "call") once the client tag is set aside. */
+function isThinTask(text: string): boolean {
+  const core = text.split(" · ")[0].trim();
+  return core.split(/\s+/).filter(Boolean).length <= 1;
 }
 
 /** Pull the person's name out of a "quote X" / "send X a quote" reminder text. */
