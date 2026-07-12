@@ -41,6 +41,22 @@ export function todayInTz(tz: string, now: Date = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: safeTz(tz) }).format(now);
 }
 
+/** "YYYY-MM-DD" + "HH:MM" as wall-clock in the business timezone → UTC ISO.
+ *  Server-timezone independent (the toLocaleString round-trip trick is only
+ *  correct on UTC servers). ±1h on DST switch days is fine for reminders. */
+export function wallTimeToISO(ymd: string, hhmm: string, tz: string): string {
+  const z = safeTz(tz);
+  const guess = new Date(`${ymd}T${hhmm}:00Z`);
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: z, year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+  }).formatToParts(guess).reduce((o, x) => { o[x.type] = x.value; return o; }, {} as Record<string, string>);
+  // What the zone's wall clock shows at `guess` → the zone's UTC offset there.
+  const asUTC = Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour, +parts.minute, +parts.second);
+  const offMs = asUTC - guess.getTime();
+  return new Date(guess.getTime() - offMs).toISOString();
+}
+
 /**
  * The given instant as a wall-clock ISO string WITH the tz offset, e.g.
  * "2026-07-11T11:34:00-07:00". We hand this to the LLM as "now" so relative

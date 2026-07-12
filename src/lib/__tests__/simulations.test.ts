@@ -200,8 +200,11 @@ test("S2: 'lost the X bid' removes them cleanly", async () => {
   assert.equal(tay!.status, "lost");
 });
 
-test("S2: reminder-only text sets a reminder", async () => {
+test("S2: reminder-only text asks for the time, then sets it", async () => {
   await reset([]);
-  const r = await say("remind me to grab mulch friday");
+  const ask = await say("remind me to grab mulch friday");
+  assert.match(ask, /what time/i, ask);
+  const r = await say("2pm");
   assert.match(r, /Reminder set ✅/i, r);
+  assert.match(r, /2:00/, r);
 });

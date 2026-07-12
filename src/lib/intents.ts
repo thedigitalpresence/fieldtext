@@ -6,7 +6,7 @@ import { logLlm } from "./billing";
 import { money, periodLabel, clientSummary, businessLang, t } from "./templates";
 import {
   normalizeAmount, normalizePeriod, normalizeStatus, normalizeName, normalizeAddress,
-  computeNextService, advanceService, todayInTz, normalizeWeekday, resolveDate,
+  computeNextService, advanceService, todayInTz, normalizeWeekday, resolveDate, wallTimeToISO,
 } from "./normalize";
 import {
   generateDueCharges, createManualCharge, createJobCharge, applyPaymentToCharges,
@@ -104,7 +104,7 @@ async function runAction(
     case "update_status": return updateStatus(business, p, ctx, session, lang);
     case "log_job": return logJob(business, p, session, lang);
     case "log_payment": return logPayment(business, p, session, lang);
-    case "set_reminder": return setReminder(business, p, sourceMessageId, lang);
+    case "set_reminder": return setReminder(business, p, sourceMessageId, lang, session, rawText);
     case "correction": return applyCorrection(business, p, lang);
     case "query": return runQuery(business, p, ctx);
     case "log_expense": return logExpense(business, p, session, lang);
@@ -639,6 +639,31 @@ export async function resolvePending(
     await updateClient(clientId, patch);
     return t.infoSaved(client.name, saved, lang);
   }
+
+  // "What time should I text you?" — capture the clock time for a dated reminder.
+  if (pending.kind === "reminder_time") {
+    const base = pending.action.due_at;
+    if (!base) return null;
+    const text = pending.action.reminder_text || (lang === "es" ? "dar seguimiento" : "follow up");
+    let tm = parseTimeAnswer(a);
+    if (!tm && /\b(whenever|any ?time|skip|default|da igual|cualquier)/i.test(a)) tm = { h: 9, m: 0 };
+    if (!tm) {
+      // A real command typed instead of a time → let it run, keep the question open.
+      const probe = heuristicParse(a, ctx).actions[0];
+      if (probe && probe.intent !== "help" && probe.confidence >= 0.55) {
+        session.pending = pending;
+        return null;
+      }
+      session.pending = pending;
+      return lang === "es"
+        ? `¿A qué hora te escribo? (ej. "9am", "2:30pm", "mediodía")`
+        : `What time should I text you? (e.g. "9am", "2:30pm", "noon")`;
+    }
+    const ymd = todayInTz(business.timezone, new Date(base));
+    const dueISO = wallTimeToISO(ymd, `${String(tm.h).padStart(2, "0")}:${String(tm.m).padStart(2, "0")}`, business.timezone);
+    await createReminder({ businessId: business.id, text, dueISO, clientId: pending.action.client_id ?? null, kind: "manual" });
+    return t.reminderSet(formatWhen(dueISO, business.timezone, lang), text, lang);
+  }
   return null;
 }
 
@@ -1003,7 +1028,34 @@ async function logPayment(business: Business, p: ParsedAction, session: ActionSe
   return base;
 }
 
-async function setReminder(business: Business, p: ParsedAction, sourceMessageId: string | null, lang: Lang): Promise<string> {
+/** Did the operator actually name a clock time ("at 3", "9am", "in 5 min")? */
+function hasExplicitTime(raw: string): boolean {
+  return /\b\d{1,2}:\d{2}\b|\b\d{1,2}\s*(?:a\.?m\.?|p\.?m\.?)\b|\bat\s+\d{1,2}\b|\ba las?\s+\d{1,2}\b|\b(?:noon|midnight|mediod[ií]a|medianoche)\b|\b(?:in|en)\s+\d+\s*(?:m|min|mins|minutes?|h|hr|hrs|hours?|minutos?|horas?)\b|\bnow\b|\bahora\b/i.test(raw);
+}
+
+/** A time-of-day reply: "9", "9am", "2:30 pm", "noon", "morning". null if not time-shaped. */
+function parseTimeAnswer(s: string): { h: number; m: number } | null {
+  const t = s.toLowerCase().trim();
+  if (/\b(?:noon|mediod[ií]a)\b/.test(t)) return { h: 12, m: 0 };
+  if (/\b(?:morning|(?:por la )?ma[ñn]ana)\b/.test(t)) return { h: 9, m: 0 };
+  if (/\b(?:afternoon|tarde)\b/.test(t)) return { h: 14, m: 0 };
+  if (/\b(?:evening|tonight|noche)\b/.test(t)) return { h: 18, m: 0 };
+  const m = t.match(/^(?:at\s+|a las?\s+)?(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?|am|pm)?\.?$/i);
+  if (!m) return null;
+  let h = parseInt(m[1], 10);
+  const mm = m[2] ? parseInt(m[2], 10) : 0;
+  const mer = m[3]?.[0]?.toLowerCase();
+  if (mer === "p" && h < 12) h += 12;
+  else if (mer === "a" && h === 12) h = 0;
+  else if (!mer && h >= 1 && h <= 7) h += 12; // bare "3" during the workday means 3 PM
+  if (h > 23 || mm > 59) return null;
+  return { h, m: mm };
+}
+
+async function setReminder(
+  business: Business, p: ParsedAction, sourceMessageId: string | null, lang: Lang,
+  session: ActionSession = {}, rawText = ""
+): Promise<string> {
   if (!p.due_at) return t.whenRemind(lang);
   const text = p.reminder_text || (lang === "es" ? "dar seguimiento" : "follow up");
   const matches = p.client_name ? await matchClients(business.id, { name: p.client_name }) : [];
@@ -1023,6 +1075,24 @@ async function setReminder(business: Business, p: ParsedAction, sourceMessageId:
         createdProspect = true;
       }
     }
+  }
+
+  // No clock time given ("remind me tomorrow") → ask, don't assume 9 AM.
+  // (Skipped when another question is already open, so we don't clobber it —
+  // in that case the default time is used and announced in the confirmation.)
+  if (rawText && !hasExplicitTime(rawText) && !session.pending) {
+    session.pending = {
+      kind: "reminder_time",
+      action: { intent: "set_reminder", confidence: 1, client_id: client?.id, reminder_text: text, due_at: p.due_at },
+      expiresAt: pendingExpiry(),
+    };
+    const dayStr = new Intl.DateTimeFormat(lang === "es" ? "es-ES" : "en-US", {
+      timeZone: business.timezone, weekday: "short", month: "short", day: "numeric",
+    }).format(new Date(p.due_at));
+    const prospectLine = createdProspect && client
+      ? (lang === "es" ? `Agregué a ${client.name} 📝. ` : `Added ${client.name} 📝. `)
+      : "";
+    return prospectLine + t.whatTimeRemind(dayStr, lang);
   }
 
   await createReminder({ businessId: business.id, text, dueISO: p.due_at, clientId: client?.id ?? null, sourceMessageId, kind: "manual" });

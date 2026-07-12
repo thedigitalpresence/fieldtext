@@ -119,6 +119,7 @@ function systemPrompt(ctx: ParseContext): string {
     `- billing_period enum: one_time | weekly | biweekly | monthly. ("a month"/"al mes" -> monthly, "every other week"/"cada dos semanas" -> biweekly, "one off"/"una vez" -> one_time).`,
     `- status enum: quoted | active | completed | lost. ("said yes"/"dijo que sí"/"are in"/"empieza" -> active; "declined"/"perdimos"/"lost the X job" -> lost; "remove/drop/get rid of/fire/no longer a client/done with X for good"/"quita/elimina/ya no es cliente" -> completed — this DOES remove them, it is a supported action).`,
     `- client_name Title Case; address with standard abbreviations.`,
+    `- Work words are service_description, NEVER part of the name: "new quote elena shackelford house painting $3000" = client_name "Elena Shackelford", service_description "house painting", amount 3000. Same for mowing, cleanup, pressure washing, gutters, etc., wherever they appear in the sentence.`,
     `- recurring service schedule: "every other tuesday"/"weekly on mondays"/"cada dos semanas los martes" -> service_interval (weekly|biweekly|monthly) + service_day. This is the SERVICE cadence, separate from billing_period.`,
     `- payments: "collected/paid/cobré" -> log_payment payment_status=paid; "owes"/"hasn't paid"/"debe" -> payment_status=unpaid; "overdue/atrasado" -> overdue.`,
     ``,
@@ -378,8 +379,11 @@ function parseClause(text: string, _ctx: ParseContext): Record<string, any> | nu
   const isObligation = /\b(need|needs|have|has|got)\s+to\b|gotta|don'?t\s+forget/i.test(lower) && HAS_TIME.test(lower);
   if (/\b(remind me|remember to|follow up with|ping me|don'?t let me forget|dont let me forget|recu[eé]rdame|recordarme|dar seguimiento)/i.test(lower) || isObligation) {
     let body = t
-      .replace(/^.*?(remind me to|remind me|remember to|ping me about|ping me to|ping me|don'?t let me forget to|don'?t let me forget|recu[eé]rdame que|recu[eé]rdame|recordarme|need to|needs to|have to|has to|got to|gotta|don'?t forget to|don'?t forget)\s*/i, "")
+      // \b after "to" so "remind me tomorrow ..." doesn't become "morrow ..."
+      .replace(/^.*?(remind me to\b|remind me|remember to\b|ping me about|ping me to\b|ping me|don'?t let me forget to\b|don'?t let me forget|recu[eé]rdame que|recu[eé]rdame|recordarme|need to\b|needs to\b|have to\b|has to\b|got to\b|gotta|don'?t forget to\b|don'?t forget)\s*/i, "")
       .replace(/^.*?(follow up with|dar seguimiento a)/i, (m) => m);
+    // A LEADING time word ("tomorrow to quote mitch") is the WHEN, not the task.
+    body = body.replace(/^\s*(?:today|tomorrow|tonight|ma[ñn]ana|hoy|monday|tuesday|wednesday|thursday|friday|saturday|sunday|lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo)\b[,\s]*(?:to\s+|que\s+)?/i, "");
     body = body.replace(/\b(today|tomorrow|next week|in \d+ days?|on \w+|this \w+|el \w+|ma[ñn]ana|hoy|pr[oó]xima semana|en \d+ d[ií]as?|lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b.*$/i, "").trim();
     return { intent: "set_reminder", confidence: 0.6, reminder_text: body || t, due_at: t };
   }
@@ -492,6 +496,19 @@ function parseQuote(text: string): Record<string, any> {
 }
 
 /** Parse an already-keyword-stripped quote body: "name at addr for $amt service". */
+// Work-phrase detector: peels a trailing service ("house painting", "weekly
+// mowing") off a captured name so it lands in service_description instead.
+const SERVICE_PEEL =
+  /\b(?:(?:house|deck|window|gutter|lawn|yard|pool|pressure|power|spring|fall|weekly|monthly)\s+)*(?:paint(?:ing)?|mow(?:ing)?|clean(?:ing|up)?|wash(?:ing)?|landscaping|trim(?:ming)?|mulch(?:ing)?|edging|weeding|hauling|plow(?:ing)?|gutters?|hedges?|fertiliz(?:ing|ation)?|aerat(?:ing|ion)?)\b.*$/i;
+function peelService(name?: string): { name?: string; service?: string } {
+  if (!name) return { name };
+  const m = name.match(SERVICE_PEEL);
+  if (!m || m.index == null || m.index === 0) return { name }; // keep at least one name token
+  const peeled = name.slice(0, m.index).replace(/[\s,;-]+$/, "").trim();
+  if (!peeled) return { name };
+  return { name: peeled, service: name.slice(m.index).trim() };
+}
+
 function parseQuoteBody(body: string): Record<string, any> {
   let s = body.replace(/^(a los|a las|a la|a el|al|a|to)\s+/i, "");
 
@@ -525,6 +542,13 @@ function parseQuoteBody(body: string): Record<string, any> {
       name = before;
     }
     service = after;
+    // "elena shackelford house painting $3000": the work phrase rides inside the
+    // name when there's no address; peel it into the service.
+    if (!service) {
+      const peeled = peelService(name);
+      name = peeled.name;
+      service = peeled.service ?? service;
+    }
   } else {
     // No price in the text — still split "name at address for service".
     const atM = s.match(/^(.*?)\s+(?:at|en|@)\s+(.+)$/i);
@@ -539,7 +563,9 @@ function parseQuoteBody(body: string): Record<string, any> {
         name = forM[1];
         service = forM[2];
       } else {
-        name = s;
+        const peeled = peelService(s);
+        name = peeled.name;
+        service = peeled.service;
       }
     }
   }

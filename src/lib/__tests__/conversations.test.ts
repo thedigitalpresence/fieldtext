@@ -822,7 +822,7 @@ test("G5: every command family works against every book state", async () => {
   const commands: { send: string; expect: RegExp }[] = [
     { send: "quoted paula newton at 3 fir ln for $150/mo edging", expect: /Paula Newton.*Quoted/s },
     { send: "new job kim votolato has hedges for 90 a week", expect: /Kim Votolato.*Active/s },
-    { send: "remind me to call the dump friday", expect: /Reminder set ✅/ },
+    { send: "remind me to call the dump friday at 9am", expect: /Reminder set ✅/ },
     { send: "spent 40 on gas", expect: /Expense ✅ \$40/ },
     { send: "rained out, push today to tomorrow", expect: /Moved ✅|nothing to move/i },
     { send: "help", expect: /FieldText/ },
@@ -890,9 +890,12 @@ test("G12: quote to-do reminder is specific, offers a draft, then chases on SENT
 
 test("G13: 'remind me to quote <new person>' adds them + links the reminder", async () => {
   await reset([]); // empty book — Mitch K isn't a client yet
-  const reply = await say("remind me tomorrow to quote mitch k");
+  const ask = await say("remind me tomorrow to quote mitch k");
+  assert.match(ask, /Mitch K/, `should confirm the prospect was added: "${ask}"`);
+  assert.match(ask, /what time/i, `no clock time given → asks instead of assuming 9 AM: "${ask}"`);
+  const reply = await say("9am");
   assert.match(reply, /Reminder set/i);
-  assert.match(reply, /Mitch K/, `should confirm the prospect was added: "${reply}"`);
+  assert.match(reply, /9:00/, `honors the chosen time: "${reply}"`);
 
   const id = await bizId();
   const { data: clients } = await db().from("clients").select("*").eq("business_id", id);
@@ -961,6 +964,19 @@ test("G19: logging a quote announces the follow-up plan", async () => {
   assert.match(reply, /Jane Miller|Quoted/i);
   assert.match(reply, /remind you in 2 days to follow up/i, `should announce the chase: "${reply}"`);
   assert.ok(!reply.includes("—"), "no em-dashes");
+});
+
+test("G20: inline service in a quote is captured, not lumped into the name", async () => {
+  await reset([]);
+  const reply = await say("new quote elena vasquez house painting $3000");
+  const id = await bizId();
+  const { data: clients } = await db().from("clients").select("*").eq("business_id", id);
+  const elena = (clients as { name: string; service_description: string | null; amount: number | null }[]).find((c) => /elena/i.test(c.name));
+  assert.ok(elena, `client created: "${reply}"`);
+  assert.equal(elena!.name, "Elena Vasquez", `name is clean, no work words: got "${elena!.name}"`);
+  assert.match(elena!.service_description ?? "", /house painting/i, `service captured: ${elena!.service_description}`);
+  assert.equal(Number(elena!.amount), 3000);
+  assert.ok(!/the service/i.test(reply), `should not re-ask for the service: "${reply}"`);
 });
 
 test("scenario count", () => {

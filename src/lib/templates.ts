@@ -139,6 +139,12 @@ export const t = {
       : `I'm not totally sure what you meant by "${q}". Can you say it another way? For example: "remind me tomorrow to quote Mitch" or "Mitch's phone is 555-1234".`;
   },
 
+  // Asked when a reminder has a day but no time: never assume 9 AM silently.
+  whatTimeRemind: (dayStr: string, lang: Lang) =>
+    lang === "es"
+      ? `Listo, ${dayStr}. ¿A qué hora te escribo? (ej. "9am", "2:30pm", "mediodía")`
+      : `Got it, ${dayStr}. What time should I text you? (e.g. "9am", "2:30pm", "noon")`,
+
   reminderSetProspect: (when: string, name: string, lang: Lang) =>
     lang === "es"
       ? `Recordatorio listo ✅ Agregué a ${name} y te aviso el ${when} para cotizarle. Cuando toque, responde BORRADOR y te escribo el mensaje.`
