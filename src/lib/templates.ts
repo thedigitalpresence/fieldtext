@@ -132,6 +132,14 @@ export const t = {
 
   reminderDue: (text: string, lang: Lang) => (lang === "es" ? `⏰ Recordatorio: ${text}` : `⏰ Reminder: ${text}`),
 
+  // A reminder linked to a client keeps their name in the text ("send · Elena
+  // Shackelford"), so a thin task never fires as a context-free "Reminder: send".
+  taggedReminder: (text: string, clientName: string | null | undefined): string => {
+    if (!clientName) return text;
+    const first = clientName.split(/\s+/)[0]?.toLowerCase() ?? "";
+    return first && text.toLowerCase().includes(first) ? text : `${text} · ${clientName}`;
+  },
+
   notSure: (text: string, lang: Lang) => {
     const q = text.trim().replace(/\s+/g, " ").slice(0, 60);
     return lang === "es"

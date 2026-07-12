@@ -1057,7 +1057,7 @@ async function setReminder(
   session: ActionSession = {}, rawText = ""
 ): Promise<string> {
   if (!p.due_at) return t.whenRemind(lang);
-  const text = p.reminder_text || (lang === "es" ? "dar seguimiento" : "follow up");
+  let text = p.reminder_text || (lang === "es" ? "dar seguimiento" : "follow up");
   const matches = p.client_name ? await matchClients(business.id, { name: p.client_name }) : [];
   let client = matches.length === 1 ? matches[0] : null;
 
@@ -1076,6 +1076,10 @@ async function setReminder(
       }
     }
   }
+
+  // Keep the client's name inside the reminder text so "new reminder for Elena:
+  // send" never fires as a context-free "Reminder: send".
+  text = t.taggedReminder(text, client?.name);
 
   // No clock time given ("remind me tomorrow") → ask, don't assume 9 AM.
   // (Skipped when another question is already open, so we don't clobber it —
