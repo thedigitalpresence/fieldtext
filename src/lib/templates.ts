@@ -312,7 +312,7 @@ export const t = {
       name: ["their full name", "su nombre completo"],
       address: ["the address", "la dirección"],
       phone: ["a phone number", "un teléfono"],
-      service: ["what service you're doing", "qué servicio harás"],
+      service: ["the service", "el servicio"],
     };
     const list = missing.map((m) => (lang === "es" ? words[m]?.[1] : words[m]?.[0])).filter(Boolean);
     const joined = list.length > 1 ? list.slice(0, -1).join(", ") + (lang === "es" ? " y " : " and ") + list[list.length - 1] : list[0];

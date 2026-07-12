@@ -161,13 +161,23 @@ async function resolveClient(
   if (matches.length === 1) {
     // Strong match (exact/substring) -> use it. Weak match (shared last name,
     // typo bonus) -> CONFIRM: "Eric Shackelford" must never silently become
-    // "Elena Shackelford".
+    // "Elena Shackelford". (A single direct match to a removed client is kept, so
+    // "pause the one I just removed" still works.)
     if (matches[0].score >= STRONG_MATCH || !p.client_name) return { client: matches[0].client };
     session.pending = { kind: "confirm_match", action: p, candidateIds: [matches[0].client.id], expiresAt: pendingExpiry() };
     return { client: null, ask: t.didYouMean(matches[0].client.name, p.client_name, lang) };
   }
   if (matches.length > 1) {
-    const shown = matches.slice(0, 4);
+    // Don't offer REMOVED people as "which one?" candidates. Prefer active
+    // matches; if that narrows to one, resolve it like a single match.
+    const active = matches.filter((m) => m.client.status !== "completed" && m.client.status !== "lost");
+    const pool = active.length ? active : matches;
+    if (pool.length === 1) {
+      if (pool[0].score >= STRONG_MATCH || !p.client_name) return { client: pool[0].client };
+      session.pending = { kind: "confirm_match", action: p, candidateIds: [pool[0].client.id], expiresAt: pendingExpiry() };
+      return { client: null, ask: t.didYouMean(pool[0].client.name, p.client_name, lang) };
+    }
+    const shown = pool.slice(0, 4);
     session.pending = { kind: "which_client", action: p, candidateIds: shown.map((m) => m.client.id), expiresAt: pendingExpiry() };
     const opts_ = shown.map((m, i) => `(${i + 1}) ${m.client.name}${m.client.address ? ` — ${m.client.address}` : ""}`).join("  ");
     return { client: null, ask: t.whichClient(opts_, lang) };
@@ -470,18 +480,34 @@ export async function resolvePending(
         .replace(/[#:]/g, " ")
         .replace(/\s+/g, " ").trim();
     }
-    rest = rest.replace(/^[,;·-]+|[,;·-]+$/g, "").trim();
+    rest = rest.replace(/^[,;·\n-]+|[,;·\n-]+$/g, "").replace(/\s+/g, " ").trim();
     if (rest) {
-      // A house number OR a street word ("Main Street", "Elm Ct") means address —
-      // so a digit-less street isn't misfiled as the service.
-      const looksStreet = /\d/.test(rest)
-        || /\b(st|street|ave|avenue|rd|road|ln|lane|dr|drive|blvd|boulevard|ct|court|way|pl|place|cir|circle|hwy|highway|apt|suite|ste|unit|calle|avenida)\b/i.test(rest);
-      if (missing.includes("address") && looksStreet) {
-        patch.address = normalizeAddress(rest);
-      } else if (missing.includes("service")) {
-        patch.service_description = rest.toLowerCase();
-      } else if (missing.includes("address")) {
-        patch.address = normalizeAddress(rest); // street name without a number
+      // One message can carry BOTH the address and the service ("333 F St, painting
+      // his house"). Peel them apart instead of lumping it all into the address.
+      // 1. Explicit "service: X" label -> service.
+      if (missing.includes("service") && !patch.service_description) {
+        const svcM = rest.match(/\bservic(?:e|io)\s*(?:is|es|:|-)?\s*(.+)$/i);
+        if (svcM && svcM.index != null) { patch.service_description = cleanService(svcM[1]); rest = rest.slice(0, svcM.index).trim(); }
+      }
+      // 2. Address: labeled "address: X", else a street-looking chunk (number + street word).
+      if (missing.includes("address") && !patch.address) {
+        const addrM = rest.match(/\baddress\s*(?:is|:|-)?\s*(.+)$/i);
+        const streetM = rest.match(/\d+\s+[a-z0-9][a-z0-9 .'#-]*?\b(?:st|street|ave|avenue|rd|road|ln|lane|dr|drive|blvd|boulevard|ct|court|way|pl|place|cir|circle|hwy|highway|apt|suite|ste|unit|calle|avenida)\b\.?/i);
+        if (addrM && addrM.index != null) { patch.address = normalizeAddress(addrM[1].trim()); rest = rest.slice(0, addrM.index).trim(); }
+        else if (streetM && streetM.index != null) {
+          patch.address = normalizeAddress(streetM[0].trim());
+          rest = (rest.slice(0, streetM.index) + " " + rest.slice(streetM.index + streetM[0].length)).replace(/\s+/g, " ").trim();
+        }
+      }
+      // 3. Whatever's left -> a digit-less street ("Elm Ct") is still the address;
+      //    otherwise it's the service (if we still need it).
+      rest = rest.replace(/^[,;·-]+|[,;·-]+$/g, "").trim();
+      if (rest) {
+        const looksStreet = /\d/.test(rest)
+          || /\b(st|street|ave|avenue|rd|road|ln|lane|dr|drive|blvd|boulevard|ct|court|way|pl|place|cir|circle|hwy|highway|apt|suite|ste|unit|calle|avenida)\b/i.test(rest);
+        if (missing.includes("address") && !patch.address && looksStreet) patch.address = normalizeAddress(rest);
+        else if (missing.includes("service") && !patch.service_description) patch.service_description = cleanService(rest);
+        else if (missing.includes("address") && !patch.address) patch.address = normalizeAddress(rest);
       }
     }
     if (!Object.keys(patch).length) return null; // unrelated text — parse normally
@@ -702,24 +728,34 @@ async function logQuote(business: Business, p: ParsedAction, ctx: ParseContext, 
     client = all.find((c) => c.id === p.client_id) ?? null;
   } else {
     const matches = await matchClientsScored(business.id, { name: p.client_name, address: p.address });
-    if (matches.length > 1) {
-      const shown = matches.slice(0, 4);
+    const removed = (c: Client) => c.status === "completed" || c.status === "lost";
+    // Removed people are NOT offered as candidates (so "quote Jaime Shackelford"
+    // doesn't dredge up deleted Elena/Eric by shared last name). Only a direct,
+    // strong match to a single removed client triggers the deliberate re-add offer.
+    const active = matches.filter((m) => !removed(m.client));
+    if (active.length > 1) {
+      const shown = active.slice(0, 4);
       session.pending = { kind: "which_client", action: p, candidateIds: shown.map((m) => m.client.id), expiresAt: pendingExpiry() };
       const opts = shown.map((m, i) => `(${i + 1}) ${m.client.name}${m.client.address ? ` — ${m.client.address}` : ""}`).join("  ");
       return t.whichClient(opts, lang);
     }
-    if (matches.length === 1 && matches[0].score < STRONG_MATCH && p.client_name) {
+    if (active.length === 1 && active[0].score < STRONG_MATCH && p.client_name) {
       // Weak lookalike (e.g. same last name only): confirm before touching either record.
-      session.pending = { kind: "confirm_match", action: p, candidateIds: [matches[0].client.id], expiresAt: pendingExpiry() };
-      return t.didYouMean(matches[0].client.name, p.client_name, lang);
+      session.pending = { kind: "confirm_match", action: p, candidateIds: [active[0].client.id], expiresAt: pendingExpiry() };
+      return t.didYouMean(active[0].client.name, p.client_name, lang);
     }
-    // Never silently resurrect a REMOVED client. If the only match was removed
-    // (completed/lost), confirm bringing them back rather than assuming it's them.
-    if (matches.length === 1 && p.client_name && (matches[0].client.status === "completed" || matches[0].client.status === "lost")) {
-      session.pending = { kind: "confirm_match", action: p, candidateIds: [matches[0].client.id], expiresAt: pendingExpiry() };
-      return t.reAddRemoved(matches[0].client.name, p.client_name, lang);
+    if (active.length === 1) {
+      client = active[0].client; // strong active match
+    } else {
+      // No active match. Offer to bring back a removed client ONLY on a strong,
+      // direct name match — never on a weak shared-last-name lookalike.
+      const removedStrong = matches.filter((m) => removed(m.client) && m.score >= STRONG_MATCH);
+      if (removedStrong.length === 1 && p.client_name) {
+        session.pending = { kind: "confirm_match", action: p, candidateIds: [removedStrong[0].client.id], expiresAt: pendingExpiry() };
+        return t.reAddRemoved(removedStrong[0].client.name, p.client_name, lang);
+      }
+      client = null; // nothing active matched — create a new client below
     }
-    client = matches[0]?.client ?? null;
   }
 
   // Guard: a new price for an EXISTING active client is a price update, not a
@@ -1087,6 +1123,16 @@ async function updateClientInfo(business: Business, p: ParsedAction, session: Ac
   }
   await updateClient(client.id, patch);
   return t.infoSaved(client.name, saved.join(" · "), lang);
+}
+
+/** Tidy a spoken service into a clean label: "im painting his house" -> "painting house". */
+function cleanService(s: string): string {
+  return s
+    .replace(/^\s*(i'?m|i am|we'?re|we are|im|we do|doing|the service is|service is|servicio(?: es)?|service|servicio)\s*[:\-]?\s*/i, "")
+    .replace(/\b(his|her|their|the|a)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
 }
 
 function askForField(field: "address" | "phone" | "email" | "note", name: string, lang: Lang): string {

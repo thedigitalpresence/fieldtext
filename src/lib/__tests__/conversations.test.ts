@@ -933,6 +933,28 @@ test("G16: adding a quote prospect offers to add missing details", async () => {
   assert.ok(mitch?.address && /oak/i.test(mitch.address), `address captured: ${mitch?.address}`);
 });
 
+test("G17: address + phone + service in one reply are all captured (no service re-ask)", async () => {
+  await reset([]);
+  await say("new quote for roland blankenship $3500");
+  const r2 = await say("333 F street 333-333-3333 im painting his house");
+  assert.ok(!/what.*service/i.test(r2), `service should be captured, not re-asked: "${r2}"`);
+
+  const id = await bizId();
+  const { data: clients } = await db().from("clients").select("*").eq("business_id", id);
+  const roland = (clients as { name: string; address: string | null; phone: string | null; service_description: string | null }[]).find((c) => /roland/i.test(c.name));
+  assert.ok(roland, "roland created");
+  assert.match(roland!.address ?? "", /333 F/i);
+  assert.match(roland!.service_description ?? "", /paint/i);
+  assert.ok(roland!.phone, "phone saved");
+});
+
+test("G18: a new same-last-name person doesn't dredge up removed clients", async () => {
+  await reset([{ name: "Elena Shackelford", status: "lost" }, { name: "Eric Shackelford", status: "completed" }]);
+  const r = await say("new quote for jaime shackelford");
+  assert.ok(!/which one/i.test(r), `must not offer removed people: "${r}"`);
+  assert.match(r, /Jaime Shackelford/, "creates Jaime as a new person");
+});
+
 test("scenario count", () => {
   console.log(`\n  ▸ conversation scenarios executed: ${SCENARIOS}\n`);
   assert.ok(SCENARIOS >= 150, `expected a large matrix, got ${SCENARIOS}`);
