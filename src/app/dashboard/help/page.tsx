@@ -5,7 +5,7 @@ import { businessLang } from "@/lib/templates";
 import { Logo } from "@/app/Logo";
 import {
   ArrowLeft, FileText, DollarSign, Repeat, StickyNote, Receipt, MessageCircle,
-  UserCog, Wrench, Globe, LifeBuoy,
+  UserCog, Wrench, Globe, LifeBuoy, Lightbulb,
 } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +19,50 @@ function fmtPhone(e164: string): string {
 // One example: what you text → what FieldText texts back. [en, es] pairs.
 type Ex = { you: [string, string]; ft: [string, string] };
 type Section = { Icon: typeof FileText; title: [string, string]; blurb?: [string, string]; examples: Ex[] };
+
+// Best practices for new users — one habit + why it pays. [en, es].
+const TIPS: { tip: [string, string]; why: [string, string] }[] = [
+  {
+    tip: ["Put it all in one text: who, price, service, address.", "Dilo todo en un solo texto: quién, precio, servicio, dirección."],
+    why: ['"Quoted Jane at 5 Oak St $200/mo for mowing" saves everything at once, so there\'s less back-and-forth.', '"Coticé a Jane en 5 Oak por $200/mes de jardinería" guarda todo de una vez y hay menos idas y vueltas.'],
+  },
+  {
+    tip: ["Use the full name the first time. Shorthand after.", "Usa el nombre completo la primera vez. Después, apodos."],
+    why: ['Say "Jaime Torres" once; after that "Jaime" works. This keeps lookalike names from mixing up.', 'Di "Jaime Torres" una vez; luego "Jaime" basta. Así no se confunden nombres parecidos.'],
+  },
+  {
+    tip: ["Text things the moment they happen.", "Escribe las cosas en el momento en que pasan."],
+    why: ['"Bob paid 200" from the driveway beats trying to remember tonight. Your books stay accurate on their own.', '"Bob pagó 200" desde la entrada es mejor que recordarlo en la noche. Tus cuentas se mantienen al día solas.'],
+  },
+  {
+    tip: ["When it asks a question, just answer. Or don't.", "Cuando te pregunte algo, responde. O no."],
+    why: ["It asks one thing at a time and remembers for hours. A real command always wins, so you can interrupt with other work and come back.", "Pregunta una cosa a la vez y recuerda por horas. Un comando real siempre gana, así que puedes interrumpir con otro trabajo y volver."],
+  },
+  {
+    tip: ["Reply to the follow-up nudges. That's the money.", "Responde a los avisos de seguimiento. Ahí está el dinero."],
+    why: ['SENT, IN, OUT, or "no reply" is all it takes. That\'s what keeps every quote chased until it\'s won or dead.', 'ENVIADA, ADENTRO, FUERA o "sin respuesta" es todo. Eso mantiene cada cotización viva hasta ganarla o cerrarla.'],
+  },
+  {
+    tip: ["Tell it the moment someone says yes.", "Avísale en cuanto alguien diga que sí."],
+    why: ['"The Smiths said yes" moves them to active, and it asks when you start, how often, and what day. Your calendar builds itself.', '"Los Smith dijeron que sí" los pasa a activos y te pregunta cuándo empiezas, cada cuánto y qué día. Tu calendario se arma solo.'],
+  },
+  {
+    tip: ["Text jobsite photos with the client's name.", "Manda fotos del sitio con el nombre del cliente."],
+    why: ['A photo captioned "elena backyard" lands on Elena\'s card. Gate codes, before/after, damage: all findable later.', 'Una foto con "elena patio" queda en la ficha de Elena. Códigos, antes/después, daños: todo se encuentra luego.'],
+  },
+  {
+    tip: ["Got something wrong? Just say so.", "¿Algo salió mal? Solo dilo."],
+    why: ['"No, it\'s 333 not 233" or a quick "fix" corrects the last thing. Everything is also editable on the dashboard. Nothing is ever stuck.', '"No, es 333 no 233" o un "corrige" arregla lo último. Todo se puede editar en el panel. Nada se queda atorado.'],
+  },
+  {
+    tip: ["Ask it questions like you'd ask a helper.", "Hazle preguntas como a un ayudante."],
+    why: ['"Who owes me?", "what\'s Monday look like?", "what do I know about Elena?" all get straight answers from your book.', '"¿Quién me debe?", "¿qué toca el lunes?", "¿qué sé de Elena?" responden directo desde tu libreta.'],
+  },
+  {
+    tip: ["SKIP is always fine.", "OMITIR siempre está bien."],
+    why: ['You can add anything later: "add Mitch\'s address" or "note for Elena: gate code 4344".', 'Puedes agregar lo que sea después: "agrega la dirección de Mitch" o "nota para Elena: código 4344".'],
+  },
+];
 
 const SECTIONS: Section[] = [
   {
@@ -166,6 +210,25 @@ export default async function HelpPage() {
             ? "Escríbele a FieldText como le hablarías a un ayudante — en español o inglés, con palabras normales. No hay comandos que memorizar. Abajo tienes ejemplos de todo lo que puede hacer. Si algo no queda claro, escribe AYUDA al número y te muestra un menú."
             : "Text FieldText like you'd text a helper — in plain words, English or Spanish. There are no commands to memorize. Below are examples of everything it can do. If you're ever stuck, text HELP to the number for a quick menu."}
         </p>
+      </section>
+
+      {/* Best practices */}
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="flex items-center gap-2.5">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand/10 text-brand-dark"><Lightbulb className="h-5 w-5" /></span>
+          <h2 className="text-lg font-bold text-gray-900">{es ? "10 hábitos que le sacan el jugo" : "10 habits that get the most out of it"}</h2>
+        </div>
+        <ol className="mt-3 space-y-3">
+          {TIPS.map((tp, idx) => (
+            <li key={idx} className="flex gap-3">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand/10 text-xs font-bold text-brand-dark">{idx + 1}</span>
+              <div>
+                <p className="text-sm font-semibold text-gray-900">{i(tp.tip)}</p>
+                <p className="text-sm leading-5 text-gray-600">{i(tp.why)}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
       </section>
 
       {/* Sections */}
