@@ -134,6 +134,12 @@ async function runAction(
       if (looksConversational && /[a-zà-ÿ]{2,}/i.test(rt)) {
         return runQuery(business, { ...p, intent: "query", query_text: rt }, ctx);
       }
+      // A bare client name = "show me their card" — never "didn't catch that".
+      if (/^[a-zà-ÿ' .-]{2,40}$/i.test(rt)) {
+        const matches = await matchClientsScored(business.id, { name: rt });
+        const live = matches.filter((m) => m.client.status !== "completed" && m.client.status !== "lost");
+        if (live.length === 1 && live[0].score >= 2) return clientCard(business, live[0].client, lang);
+      }
       // A partially-understood command → the menu; otherwise recovery copy.
       return p.confidence >= 0.4 ? t.helpHint(lang) : t.didntCatch(lang);
     }
@@ -565,13 +571,7 @@ export async function resolvePending(
     if (verdict === "won") {
       await updateClient(clientId, { status: "active", last_nudged_at: null });
       await cancelQuoteReminders(clientId, business.id);
-      // NOW they're a real client — this is the moment to pin the schedule.
-      const won = { ...client, status: "active" as const };
-      if (needsSchedule(won)) {
-        session.pending = { kind: "complete_client", action: { intent: "update_client_info", confidence: 1, client_id: clientId }, missing: ["schedule"], expiresAt: pendingExpiry() };
-        return `${t.quoteWon(client.name, lang)}\n${t.needSchedule(client.name, lang)}`;
-      }
-      return t.quoteWon(client.name, lang);
+      return wonFollowup(business, client, session, lang);
     }
     if (verdict === "lost") {
       await updateClient(clientId, { status: "lost" });
@@ -756,6 +756,35 @@ function schedulePatch(p: ParsedAction, nowISO: string): Partial<Client> {
 }
 
 const RECURRING_PERIODS = new Set(["weekly", "biweekly", "monthly"]);
+
+/**
+ * The moment a quote is WON: congrats + a recap of what's on their card + ONE
+ * question for the highest-priority gap (contact info, then the recurring
+ * schedule, then the job date for one-time work). Winning is the moment the
+ * card needs to be complete — not quote time.
+ */
+async function wonFollowup(business: Business, client: Client, session: ActionSession, lang: Lang): Promise<string> {
+  const won = { ...client, status: "active" as const };
+  const congrats = t.quoteWon(client.name, lang);
+  const recap = `${lang === "es" ? "En su ficha" : "On file"}: ${clientSummary(won, lang)}`;
+
+  const missing: string[] = [];
+  if (!won.address) missing.push("address");
+  if (!won.phone) missing.push("phone");
+  if (missing.length) {
+    session.pending = { kind: "complete_client", action: { intent: "update_client_info", confidence: 1, client_id: won.id }, missing, expiresAt: pendingExpiry() };
+    return `${congrats}\n${recap}\n${t.needInfo(won.name, missing, lang)}`;
+  }
+  if (needsSchedule(won)) {
+    session.pending = { kind: "complete_client", action: { intent: "update_client_info", confidence: 1, client_id: won.id }, missing: ["schedule"], expiresAt: pendingExpiry() };
+    return `${congrats}\n${recap}\n${t.needSchedule(won.name, lang)}`;
+  }
+  if (!RECURRING_PERIODS.has(won.billing_period ?? "") && !won.next_service_on) {
+    session.pending = { kind: "complete_client", action: { intent: "update_client_info", confidence: 1, client_id: won.id }, missing: ["schedule"], expiresAt: pendingExpiry() };
+    return `${congrats}\n${recap}\n${t.whenIsTheJob(won.name, lang)}`;
+  }
+  return `${congrats}\n${recap}`;
+}
 /**
  * A recurring-service client (billed weekly/biweekly/monthly) whose visit
  * schedule we don't actually know yet. "$100/month" tells us the billing, not
@@ -986,11 +1015,10 @@ async function updateStatus(business: Business, p: ParsedAction, ctx: ParseConte
     const verb = lang === "es" ? "Actualizado ✅" : "Updated ✅";
     return `${verb} ${c.name} — ${when}${next}.`;
   }
-  // "the smiths said yes" — a recurring quote just became a real client: pin
-  // the schedule now (this is the natural moment, not back at quote time).
-  if (p.status === "active" && needsSchedule({ ...c, status: "active" })) {
-    session.pending = { kind: "complete_client", action: { intent: "update_client_info", confidence: 1, client_id: c.id }, missing: ["schedule"], expiresAt: pendingExpiry() };
-    return `${t.statusUpdated(c.name, p.status, lang)}\n${t.needSchedule(c.name, lang)}`;
+  // "the smiths said yes" — a quote just became a real client: congrats, recap
+  // the card, and chase whatever's missing (this is the natural moment).
+  if (p.status === "active" && c.status === "quoted") {
+    return wonFollowup(business, c, session, lang);
   }
   return t.statusUpdated(c.name, p.status!, lang);
 }
@@ -1454,7 +1482,38 @@ async function requestInvoice(business: Business, p: ParsedAction, session: Acti
     : t.receiptLink(client.name, money(total), url, lang);
 }
 
+/** A client's full card as a text — the deterministic answer to "his details". */
+async function clientCard(business: Business, c: Client, lang: Lang): Promise<string> {
+  const lines = [clientSummary(c, lang)];
+  if (c.phone) lines.push(`📞 ${c.phone}`);
+  if (c.service_interval) lines.push(lang === "es" ? `🗓 ${intervalWord(c.service_interval, lang)}${c.service_day ? `, ${c.service_day}s` : ""}` : `🗓 ${intervalWord(c.service_interval, lang)}${c.service_day ? ` on ${c.service_day.charAt(0).toUpperCase() + c.service_day.slice(1)}s` : ""}`);
+  if (c.next_service_on) lines.push(`${lang === "es" ? "Próxima visita" : "Next visit"}: ${fmtDay(c.next_service_on, lang)}`);
+  const owed = await clientBalance(business.id, c.id);
+  if (owed > 0.004) lines.push(lang === "es" ? `Debe ${money(owed)}` : `Owes ${money(owed)}`);
+  if (c.notes) lines.push(`📝 ${c.notes.replace(/\n/g, "; ").slice(0, 160)}`);
+  return lines.join("\n");
+}
+
 async function runQuery(business: Business, p: ParsedAction, ctx: ParseContext): Promise<string> {
+  const lang = businessLang(business);
+  const qt = (p.query_text ?? "").trim();
+
+  // Deterministic answers first — these must never wander into a loop:
+  // 1. A bare client name ("Roland") = show that client's card.
+  if (qt && qt.length <= 40 && /^[a-zà-ÿ' .-]+$/i.test(qt)) {
+    const matches = await matchClientsScored(business.id, { name: qt });
+    const live = matches.filter((m) => m.client.status !== "completed" && m.client.status !== "lost");
+    if (live.length === 1 && live[0].score >= 2) return clientCard(business, live[0].client, lang);
+  }
+  // 2. "his/her details" or a bare "details" = the client we just touched.
+  if (/\b(his|her|their|sus?)\b.*\b(details?|info|card|datos|ficha)\b/i.test(qt) || /^(details?|info|datos|ficha)\??$/i.test(qt)) {
+    const { data: rows } = await db().from("clients").select("*").eq("business_id", business.id).order("updated_at", { ascending: false }).limit(1);
+    const last = ((rows ?? []) as Client[])[0];
+    if (last && Date.now() - new Date(last.updated_at).getTime() < 6 * 60 * 60 * 1000) {
+      return clientCard(business, last, lang);
+    }
+  }
+
   const snapshot = await buildSnapshot(business);
   // Recent exchange as context so terse follow-ups ("images?") aren't amnesia.
   const { data: msgRows } = await db()

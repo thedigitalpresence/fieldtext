@@ -328,6 +328,11 @@ export const t = {
     lang === "es"
       ? `Añadí a ${name} como prospecto 📝 (aún sin cotizar).`
       : `Added ${name} as a prospect 📝 (not quoted yet).`,
+  whenIsTheJob: (name: string, lang: Lang) =>
+    lang === "es"
+      ? `¿Para cuándo es el trabajo de ${name}? Algo como "el viernes" o "el 24" me sirve. ¿Sin fecha aún? Responde OMITIR.`
+      : `When's the job for ${name}? Something like "friday" or "the 24th" works. Not booked yet? Reply SKIP.`,
+
   needSchedule: (name: string, lang: Lang) =>
     lang === "es"
       ? `¿Cuándo arrancas con ${name}? Dime cada cuánto y qué día, como "semanal los lunes desde el próximo lunes" o "mensual el 1". ¿Aún no sabes? Responde OMITIR.`

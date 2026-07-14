@@ -1087,6 +1087,30 @@ test("G27: 'flag ...' logs beta feedback and acks, without hitting the parser", 
   assert.match((rows as { body: string }[])[0].body, /fired twice/);
 });
 
+test("G28: winning a quote congratulates, recaps the card, and chases the gap", async () => {
+  // One-time job with full contact info -> congrats + recap + "when's the job?"
+  await reset([{ name: "Roland Blankenship", address: "333 F St", phone: "+13333333333", status: "quoted", amount: 3500 }]);
+  const id = await bizId();
+  await db().from("clients").update({ billing_period: "one_time", service_description: "house painting" }).eq("business_id", id);
+  const won = await say("roland is in");
+  assert.match(won, /🎉/, `congrats, not a dry status line: "${won}"`);
+  assert.match(won, /On file: .*333 F St/s, `recaps the card: "${won}"`);
+  assert.match(won, /when'?s the job/i, `asks the one-time job date: "${won}"`);
+  const sched = await say("friday");
+  assert.match(sched, /Scheduled ✅|Saved ✅/i, sched);
+  await say("skip"); // close the optional notes step
+
+  // Bare-name query returns the card, deterministically.
+  const card = await say("roland");
+  assert.match(card, /Roland Blankenship/, card);
+  assert.match(card, /333 F St/, `card shows details: "${card}"`);
+
+  // "his details" right after touching him also returns the card.
+  const his = await say("what are his details");
+  assert.match(his, /Roland Blankenship/, `pronoun resolves to the last-touched client: "${his}"`);
+  assert.match(his, /333 F St/, his);
+});
+
 test("scenario count", () => {
   console.log(`\n  ▸ conversation scenarios executed: ${SCENARIOS}\n`);
   assert.ok(SCENARIOS >= 150, `expected a large matrix, got ${SCENARIOS}`);
