@@ -102,6 +102,18 @@ export async function handleInbound(params: InboundParams): Promise<InboundOutco
     return { twiml: replyTwiml(t.cancelWhat(lang)), authorized: true };
   }
 
+  // ── Beta feedback: "flag <what happened>" pings the founder immediately ─────
+  if (/^(flag|bug|reporta(?:r)?)\b/i.test(body.trim())) {
+    await logMessage({ businessId: business.id, direction: "inbound", fromPhone: fromE164, body, intent: "flag", externalId: params.messageSid });
+    const { alertFounder } = await import("./security");
+    // Unique key per flag so every one alerts (no cooldown dedupe).
+    await alertFounder(`flag:${params.messageSid ?? Date.now()}`, `🚩 ${business.owner_name} (${business.name}) flagged: "${body.trim().slice(0, 180)}"`);
+    const ack = t.flagged(lang);
+    const outId = await logMessage({ businessId: business.id, direction: "outbound", body: ack });
+    await logSms(business, { direction: "outbound", body: ack, messageId: outId });
+    return { twiml: replyTwiml(ack), authorized: true };
+  }
+
   // ── Spend guard: hard daily per-phone cap (auto-reply loops, abuse) ──────────
   const dayAgo = new Date(Date.now() - 86400000).toISOString();
   const { data: recent } = await db()

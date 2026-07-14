@@ -132,6 +132,11 @@ export const t = {
 
   reminderDue: (text: string, lang: Lang) => (lang === "es" ? `⏰ Recordatorio: ${text}` : `⏰ Reminder: ${text}`),
 
+  flagged: (lang: Lang) =>
+    lang === "es"
+      ? `🚩 Anotado y enviado al equipo. ¡Gracias, esto ayuda mucho durante la beta!`
+      : `🚩 Got it, flagged for the team. Thanks, this really helps during beta!`,
+
   // A reminder linked to a client keeps their name in the text ("send · Elena
   // Shackelford"), so a thin task never fires as a context-free "Reminder: send".
   taggedReminder: (text: string, clientName: string | null | undefined): string => {
@@ -274,6 +279,7 @@ export const t = {
           '• "llovió, muévelo a mañana" · "pausa a Jones hasta abril"',
           '• "factura Bob" · "gasté 84 en mulch"',
           '• "¿quién me debe?" · "¿qué toca el lunes?"',
+          '• ¿Algo raro o roto? Escribe "reporta" + qué pasó 🚩',
           "Soporte: eric@fieldtextapp.com · STOP para darte de baja",
         ].join("\n")
       : [
@@ -285,6 +291,7 @@ export const t = {
           '• "rained out, push today to tomorrow" · "pause Jones til April"',
           '• "invoice Bob" · "spent 84 on mulch"',
           '• "who owes me?" · "what\'s Monday look like?"',
+          '• Something weird or broken? Text "flag" + what happened 🚩',
           "Support: eric@fieldtextapp.com · Reply STOP to unsubscribe",
         ].join("\n"),
   cancelWhat: (lang: Lang) =>

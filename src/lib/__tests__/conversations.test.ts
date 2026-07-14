@@ -1077,6 +1077,16 @@ test("G26: 'nevermind' escapes any question instead of looping", async () => {
   assert.match(bail, /no problem/i, `escapes the pending question: "${bail}"`);
 });
 
+test("G27: 'flag ...' logs beta feedback and acks, without hitting the parser", async () => {
+  await reset([]);
+  const reply = await say("flag the reminder fired twice this morning");
+  assert.match(reply, /flagged/i, reply);
+  const id = await bizId();
+  const { data: rows } = await db().from("messages").select("*").eq("business_id", id).eq("parsed_intent", "flag");
+  assert.equal((rows as unknown[]).length, 1, "flag row logged");
+  assert.match((rows as { body: string }[])[0].body, /fired twice/);
+});
+
 test("scenario count", () => {
   console.log(`\n  ▸ conversation scenarios executed: ${SCENARIOS}\n`);
   assert.ok(SCENARIOS >= 150, `expected a large matrix, got ${SCENARIOS}`);

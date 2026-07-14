@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Wallet, ClipboardList, Users, Sparkles, ExternalLink, UserPlus, Eye, Activity, Send, MessageCircle, Timer } from "lucide-react";
+import { Wallet, ClipboardList, Users, Sparkles, ExternalLink, UserPlus, Eye, Activity, Send, MessageCircle, Timer, ScrollText } from "lucide-react";
 import { db, currentSession, listBusinesses } from "@/lib/supabase";
 import { getTwilioUsage, getTwilioDelivery } from "@/lib/twilio-usage";
 import { getUptimeStatus } from "@/lib/uptime";
@@ -144,10 +144,15 @@ export default async function HqPage() {
                   <p className="truncate font-semibold text-gray-900">{o.name}</p>
                   <p className="truncate text-xs text-gray-500">{o.owner} · {o.phone}</p>
                 </div>
-                <form action={switchBusiness}>
-                  <input type="hidden" name="businessId" value={o.id} />
-                  <button className="flex min-h-[38px] shrink-0 items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-sm font-medium text-gray-700 hover:border-brand/40"><Eye className="h-4 w-4" /> Open book</button>
-                </form>
+                <div className="flex shrink-0 items-center gap-2">
+                  <Link href={`/dashboard/logs?biz=${o.id}`} className="flex min-h-[38px] items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-sm font-medium text-gray-700 hover:border-brand/40">
+                    <ScrollText className="h-4 w-4" /> Logs
+                  </Link>
+                  <form action={switchBusiness}>
+                    <input type="hidden" name="businessId" value={o.id} />
+                    <button className="flex min-h-[38px] items-center gap-1.5 rounded-lg border border-gray-200 px-3 text-sm font-medium text-gray-700 hover:border-brand/40"><Eye className="h-4 w-4" /> Open book</button>
+                  </form>
+                </div>
               </div>
             ))}
           </div>
