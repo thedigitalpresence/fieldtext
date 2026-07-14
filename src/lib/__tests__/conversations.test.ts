@@ -1039,6 +1039,27 @@ test("G24: 'new reminder for elena send later today' — task is 'send', not 'se
   assert.ok(!/send later/i.test(conf), `'later today' is the WHEN, not the task: "${conf}"`);
 });
 
+test("G25: quotes never ask the schedule; winning the quote does", async () => {
+  // Quote intake: contact info -> straight to notes, NO "when does service start".
+  await reset([]);
+  await say("quoted jaxie loveal for lawn service $100 a week");
+  const afterInfo = await say("333 w street 333-333-3333");
+  assert.ok(!/how often|starting with|service start/i.test(afterInfo), `quote intake must not ask the schedule: "${afterInfo}"`);
+  assert.match(afterInfo, /anything to note/i, `goes to notes instead: "${afterInfo}"`);
+  await say("skip");
+
+  // The quote is won -> NOW the schedule gets pinned.
+  const won = await say("jaxie said yes");
+  assert.match(won, /Jaxie Loveal/, won);
+  assert.match(won, /how often and what day/i, `won moment asks the schedule: "${won}"`);
+  const sched = await say("weekly on mondays starting next monday");
+  assert.match(sched, /Scheduled ✅/i, sched);
+  const row = await (async () => { const id = await bizId(); const { data } = await db().from("clients").select("*").eq("business_id", id); return (data as any[]).find((c) => /jaxie/i.test(c.name)); })();
+  assert.equal(row.status, "active");
+  assert.equal(row.service_interval, "weekly");
+  assert.equal(row.service_day, "monday");
+});
+
 test("scenario count", () => {
   console.log(`\n  ▸ conversation scenarios executed: ${SCENARIOS}\n`);
   assert.ok(SCENARIOS >= 150, `expected a large matrix, got ${SCENARIOS}`);

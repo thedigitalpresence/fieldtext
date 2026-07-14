@@ -315,16 +315,16 @@ export const t = {
     lang === "es" ? `Nota guardada ✅ en la ficha de ${name}.` : `Note saved ✅ to ${name}.`,
   anyNotes: (name: string, lang: Lang) =>
     lang === "es"
-      ? `¿Algo que anotar sobre ${name}? (código del portón, perros, detalles) — o manda una foto del sitio. Responde OMITIR para terminar.`
-      : `Anything to note about ${name}? (gate code, dogs, details) — or text a photo of the site. Reply SKIP to finish.`,
+      ? `¿Algo que anotar sobre ${name}? Código del portón, perros, dónde estacionar... también puedes mandar una foto del sitio. Responde OMITIR para terminar.`
+      : `Anything to note about ${name}? Gate codes, dogs, where to park... you can also text a photo of the site. Reply SKIP to finish.`,
   prospectAdded: (name: string, lang: Lang) =>
     lang === "es"
       ? `Añadí a ${name} como prospecto 📝 (aún sin cotizar).`
       : `Added ${name} as a prospect 📝 (not quoted yet).`,
   needSchedule: (name: string, lang: Lang) =>
     lang === "es"
-      ? `¿Cuándo empieza el servicio de ${name}, cada cuánto y qué día? (p. ej. "semanal los lunes desde el próximo lunes" o "mensual el 1") — o responde OMITIR.`
-      : `When does ${name}'s service start, how often, and what day? (e.g. "weekly on Mondays starting next Monday" or "monthly on the 1st") — or reply SKIP.`,
+      ? `¿Cuándo arrancas con ${name}? Dime cada cuánto y qué día, como "semanal los lunes desde el próximo lunes" o "mensual el 1". ¿Aún no sabes? Responde OMITIR.`
+      : `When are you starting with ${name}? Tell me how often and what day, like "weekly on Mondays starting next Monday" or "monthly on the 1st". Not sure yet? Reply SKIP.`,
   scheduleSaved: (name: string, when: string, lang: Lang) =>
     lang === "es" ? `Agendado ✅ ${name} — ${when}.` : `Scheduled ✅ ${name} — ${when}.`,
   allSet: (name: string, lang: Lang) =>

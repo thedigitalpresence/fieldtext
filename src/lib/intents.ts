@@ -557,6 +557,12 @@ export async function resolvePending(
     if (verdict === "won") {
       await updateClient(clientId, { status: "active", last_nudged_at: null });
       await cancelQuoteReminders(clientId, business.id);
+      // NOW they're a real client — this is the moment to pin the schedule.
+      const won = { ...client, status: "active" as const };
+      if (needsSchedule(won)) {
+        session.pending = { kind: "complete_client", action: { intent: "update_client_info", confidence: 1, client_id: clientId }, missing: ["schedule"], expiresAt: pendingExpiry() };
+        return `${t.quoteWon(client.name, lang)}\n${t.needSchedule(client.name, lang)}`;
+      }
       return t.quoteWon(client.name, lang);
     }
     if (verdict === "lost") {
@@ -748,6 +754,11 @@ const RECURRING_PERIODS = new Set(["weekly", "biweekly", "monthly"]);
  * WHEN the visits happen — without that, the calendar is just guessing.
  */
 function needsSchedule(c: Client): boolean {
+  // Only ACTIVE clients get the schedule chase. A quote isn't won yet — asking
+  // "when does service start?" before the customer says yes is presumptuous.
+  // The ask happens at the moment a quote is marked won (see quote_status /
+  // updateStatus), or immediately for already-won work ("new job ...").
+  if (c.status !== "active") return false;
   const recurring = RECURRING_PERIODS.has(c.billing_period ?? "") || !!c.service_interval;
   return recurring && !c.service_interval;
 }
@@ -966,6 +977,12 @@ async function updateStatus(business: Business, p: ParsedAction, ctx: ParseConte
     const next = sched.next_service_on ? ` · ${lang === "es" ? "próximo" : "next"} ${fmtDay(sched.next_service_on, lang)}` : "";
     const verb = lang === "es" ? "Actualizado ✅" : "Updated ✅";
     return `${verb} ${c.name} — ${when}${next}.`;
+  }
+  // "the smiths said yes" — a recurring quote just became a real client: pin
+  // the schedule now (this is the natural moment, not back at quote time).
+  if (p.status === "active" && needsSchedule({ ...c, status: "active" })) {
+    session.pending = { kind: "complete_client", action: { intent: "update_client_info", confidence: 1, client_id: c.id }, missing: ["schedule"], expiresAt: pendingExpiry() };
+    return `${t.statusUpdated(c.name, p.status, lang)}\n${t.needSchedule(c.name, lang)}`;
   }
   return t.statusUpdated(c.name, p.status!, lang);
 }
