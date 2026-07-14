@@ -191,12 +191,20 @@ async function resolveClient(
 }
 
 /** Resume a stored pending action with the operator's answer. Exported for inbound.ts. */
+/** Universal bail-out: the operator wants OUT of whatever we just asked. */
+const NEVERMIND = /^(never ?mind|nvm|forget (it|that)|cancel( that)?|drop it|no worries|leave it|olv[ií]dalo|d[ée]jalo( as[ií])?|no importa|nada)[.! ]*$/i;
+
 export async function resolvePending(
   business: Business, pending: PendingState, answer: string, ctx: ParseContext, session: ActionSession
 ): Promise<string | string[] | null> {
   const lang = session.lang ?? businessLang(business);
   if (new Date(pending.expiresAt).getTime() < Date.now()) return null;
   const a = answer.trim();
+
+  // "nevermind" escapes ANY open question — never trap the operator in a loop.
+  if (NEVERMIND.test(a)) {
+    return lang === "es" ? "👍 Sin problema." : "👍 No problem.";
+  }
 
   if (pending.kind === "which_client") {
     const ids = pending.candidateIds ?? [];
@@ -1208,6 +1216,11 @@ function quoteReminderName(text: string): string | null {
 
 /** Apply a correction ("no it's 333 not 233", "change angela to weekly") to the last-touched client. */
 async function applyCorrection(business: Business, p: ParsedAction, lang: Lang): Promise<string> {
+  // "nevermind" after "what should I fix?" (or any rejection) drops it — the
+  // parser routes bare dismissals here, which used to loop the question forever.
+  if (NEVERMIND.test((p.correction_text ?? "").trim())) {
+    return lang === "es" ? "👍 Sin problema, no cambié nada." : "👍 No problem, nothing changed.";
+  }
   const { data: rows } = await db().from("clients").select("*").eq("business_id", business.id).order("updated_at", { ascending: false }).limit(1);
   const last = ((rows ?? []) as Client[])[0];
   if (!last) return lang === "es" ? "No hay nada que corregir todavía." : "Nothing to fix yet.";

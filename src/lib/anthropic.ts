@@ -282,8 +282,9 @@ function parseClause(text: string, _ctx: ParseContext): Record<string, any> | nu
   const lower = t.toLowerCase();
   if (!t) return null;
 
-  // Correction — including a bare "no"/"fix" rejecting the last confirmation
-  if (/^(no|fix|wrong|mal)[.!]?$/i.test(lower) || /^(no[, ]|actually\b|change\b|it'?s .* not |no es|corrige|cambia\b|en realidad|fix\b)/i.test(lower)) {
+  // Correction — including a bare "no"/"fix" rejecting the last confirmation,
+  // and bare dismissals ("nevermind"), which applyCorrection acks as a no-op.
+  if (/^(no|fix|wrong|mal|never ?mind|nvm|forget it|olv[ií]dalo)[.!]?$/i.test(lower) || /^(no[, ]|actually\b|change\b|it'?s .* not |no es|corrige|cambia\b|en realidad|fix\b)/i.test(lower)) {
     return { intent: "correction", confidence: 0.6, correction_text: t };
   }
 

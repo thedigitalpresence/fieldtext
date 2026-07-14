@@ -1060,6 +1060,23 @@ test("G25: quotes never ask the schedule; winning the quote does", async () => {
   assert.equal(row.service_day, "monday");
 });
 
+test("G26: 'nevermind' escapes any question instead of looping", async () => {
+  // The reported loop: fix -> "what should I fix?" -> nevermind -> re-ask forever.
+  await reset([{ name: "Jaxie Loveal", status: "active", amount: 100 }]);
+  const ask = await say("fix jaxie");
+  assert.match(ask, /what should i fix/i, ask);
+  const out = await say("nevermind");
+  assert.match(out, /no problem/i, `must bail out, not re-ask: "${out}"`);
+  assert.ok(!/what should i fix/i.test(out), out);
+
+  // And it works as a universal escape from a pending question too.
+  await reset([]);
+  const priceAsk = await say("quoted walter fields for mowing");
+  assert.match(priceAsk, /price|how much|charge/i, priceAsk);
+  const bail = await say("nvm");
+  assert.match(bail, /no problem/i, `escapes the pending question: "${bail}"`);
+});
+
 test("scenario count", () => {
   console.log(`\n  ▸ conversation scenarios executed: ${SCENARIOS}\n`);
   assert.ok(SCENARIOS >= 150, `expected a large matrix, got ${SCENARIOS}`);
