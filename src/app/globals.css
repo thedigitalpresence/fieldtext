@@ -21,9 +21,10 @@ body { @apply bg-canvas text-gray-900 antialiased; }
 .dark .bg-gray-200 { background-color: #2b332e; }
 .dark .hover\:bg-gray-50:hover { background-color: #1c2320; }
 .dark .hover\:bg-gray-100:hover { background-color: #232a26; }
-.dark .bg-green-50, .dark .bg-green-50\/50, .dark .bg-green-50\/40 { background-color: #122419; }
+.dark .bg-green-50, .dark .bg-green-50\/50, .dark .bg-green-50\/40, .dark .bg-green-50\/60, .dark .bg-green-50\/90 { background-color: #122419; }
 .dark .bg-green-100 { background-color: #1b3325; }
-.dark .bg-amber-50 { background-color: #2b2110; }
+.dark .bg-green-200\/70 { background-color: #26462f; }
+.dark .bg-amber-50, .dark .bg-amber-50\/60 { background-color: #2b2110; }
 .dark .bg-amber-100 { background-color: #3a2d14; }
 .dark .bg-red-50, .dark .bg-red-50\/50 { background-color: #2b1614; }
 .dark .bg-red-100 { background-color: #3c1e1b; }
