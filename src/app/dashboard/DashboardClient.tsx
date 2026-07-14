@@ -8,7 +8,7 @@ import {
   FileText, UserCheck, Briefcase, DollarSign, Bell, MessageCircle, Languages,
   CalendarClock, Search, X, Check, Clock, Ban, Upload, Sun, TrendingUp, AlertCircle,
   Download, Loader2, ChevronRight, ChevronLeft, Phone, PauseCircle, Pencil, Users,
-  CalendarDays, MapPin, HelpCircle, ClipboardList, Wallet, LayoutDashboard,
+  CalendarDays, MapPin, HelpCircle, LayoutDashboard,
 } from "lucide-react";
 import { Logo } from "@/app/Logo";
 import ThemeToggle from "@/app/ThemeToggle";
@@ -59,7 +59,7 @@ type DayView = {
 
 interface Props {
   businessName: string;
-  subtitle: string;
+  ftNumber: string;
   lang: Lang;
   labels: Record<string, any>;
   kpis: { mrr: string; openQuotes: number; potential: string | null; remindersThisWeek: number; activeClients: number; outstanding: string | null; scheduledThisWeek: number };
@@ -214,7 +214,15 @@ export default function DashboardClient(props: Props) {
           <Logo className="h-10 w-10 shrink-0 text-brand drop-shadow-sm" />
           <div className="min-w-0">
             <h1 className="truncate text-2xl font-bold tracking-tight text-gray-900">{props.businessName}</h1>
-            {props.subtitle && <p className="mt-0.5 text-sm text-gray-500">{props.subtitle}</p>}
+            {props.ftNumber && (
+              <p className="mt-0.5 text-sm text-gray-500">
+                {props.lang === "es" ? (
+                  <>Escribe a <a href={`sms:${props.ftNumber.replace(/[^+\d]/g, "")}`} className="font-bold text-brand-dark">{props.ftNumber}</a> para registrar lo que sea</>
+                ) : (
+                  <>Text <a href={`sms:${props.ftNumber.replace(/[^+\d]/g, "")}`} className="font-bold text-brand-dark">{props.ftNumber}</a> to log anything</>
+                )}
+              </p>
+            )}
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -223,20 +231,10 @@ export default function DashboardClient(props: Props) {
             <HelpCircle className="h-4 w-4" />
           </Link>
           {props.admin && (
-            <>
-              <Link href="/dashboard/hq" title="HQ" aria-label="HQ" className={`flex ${TAP} min-w-[44px] items-center justify-center rounded-lg border border-brand/40 bg-brand/5 px-2.5 text-brand-dark hover:bg-brand/10`}>
-                <LayoutDashboard className="h-4 w-4" />
-              </Link>
-              <Link href="/dashboard/costs" title="Costs" aria-label="Costs" className={`flex ${TAP} min-w-[44px] items-center justify-center rounded-lg border border-gray-300 px-2.5 text-gray-600 hover:bg-gray-100`}>
-                <Wallet className="h-4 w-4" />
-              </Link>
-              <Link href="/dashboard/waitlist" title="Beta waitlist" aria-label="Beta waitlist" className={`flex ${TAP} min-w-[44px] items-center justify-center rounded-lg border border-gray-300 px-2.5 text-gray-600 hover:bg-gray-100`}>
-                <ClipboardList className="h-4 w-4" />
-              </Link>
-              <Link href="/dashboard/admin" title="Operators" aria-label="Operators" className={`flex ${TAP} min-w-[44px] items-center justify-center rounded-lg border border-gray-300 px-2.5 text-gray-600 hover:bg-gray-100`}>
-                <Users className="h-4 w-4" />
-              </Link>
-            </>
+            // Costs / waitlist / operators all live inside HQ — one icon is enough.
+            <Link href="/dashboard/hq" title="HQ" aria-label="HQ" className={`flex ${TAP} min-w-[44px] items-center justify-center rounded-lg border border-brand/40 bg-brand/5 px-2.5 text-brand-dark hover:bg-brand/10`}>
+              <LayoutDashboard className="h-4 w-4" />
+            </Link>
           )}
           <div className="flex overflow-hidden rounded-lg border border-gray-300 text-xs font-medium">
             {(["en", "es"] as Lang[]).map((lng) => (

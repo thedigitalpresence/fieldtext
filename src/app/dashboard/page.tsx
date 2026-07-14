@@ -339,7 +339,7 @@ export default async function DashboardPage({ searchParams }: { searchParams?: {
   return (
     <DashboardClient
       businessName={business.name}
-      subtitle={config.twilio.fromNumber() ? d.remindersTextYou(fmtPhone(config.twilio.fromNumber()!)) : ""}
+      ftNumber={config.twilio.fromNumber() ? fmtPhone(config.twilio.fromNumber()!) : ""}
       lang={lang}
       labels={labels}
       kpis={{
