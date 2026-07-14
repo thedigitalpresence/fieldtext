@@ -5,3 +5,72 @@
 :root { color-scheme: light; }
 /* cool sage background for a clean, outdoor landscaping feel */
 body { @apply bg-canvas text-gray-900 antialiased; }
+
+/* ── Dark mode ────────────────────────────────────────────────────────────────
+   A single override layer: the app is written in light utilities, and this
+   remaps the common ones under html.dark (green-tinted dark palette). The
+   toggle lives in ThemeToggle.tsx; layout.tsx applies the class pre-paint. */
+.dark { color-scheme: dark; }
+.dark body { background-color: #0e1210; color: #eef1ef; }
+
+/* surfaces */
+.dark .bg-white { background-color: #181d1a; }
+.dark .bg-canvas { background-color: #0e1210; }
+.dark .bg-gray-50 { background-color: #141917; }
+.dark .bg-gray-100 { background-color: #222925; }
+.dark .bg-gray-200 { background-color: #2b332e; }
+.dark .hover\:bg-gray-50:hover { background-color: #1c2320; }
+.dark .hover\:bg-gray-100:hover { background-color: #232a26; }
+.dark .bg-green-50, .dark .bg-green-50\/50, .dark .bg-green-50\/40 { background-color: #122419; }
+.dark .bg-green-100 { background-color: #1b3325; }
+.dark .bg-amber-50 { background-color: #2b2110; }
+.dark .bg-amber-100 { background-color: #3a2d14; }
+.dark .bg-red-50, .dark .bg-red-50\/50 { background-color: #2b1614; }
+.dark .bg-red-100 { background-color: #3c1e1b; }
+.dark .hover\:bg-red-50:hover { background-color: #3c1e1b; }
+.dark .bg-blue-100 { background-color: #16283e; }
+.dark .bg-sky-100 { background-color: #12303e; }
+
+/* text */
+.dark .text-gray-900 { color: #eef1ef; }
+.dark .text-gray-800 { color: #dfe3e1; }
+.dark .text-gray-700 { color: #c6ccc9; }
+.dark .text-gray-600 { color: #a3aca7; }
+.dark .text-gray-500 { color: #8b948f; }
+.dark .text-gray-400 { color: #6e7772; }
+.dark .text-gray-300 { color: #545d58; }
+.dark .text-brand { color: #22c55e; }
+.dark .text-brand-dark { color: #4ade80; }
+.dark .hover\:text-gray-600:hover { color: #c6ccc9; }
+.dark .text-green-800 { color: #86dfa8; }
+.dark .text-green-700 { color: #6fd096; }
+.dark .text-amber-800 { color: #f0c464; }
+.dark .text-amber-700 { color: #e5b74f; }
+.dark .text-amber-600 { color: #dcaa3b; }
+.dark .text-red-800 { color: #f4a49c; }
+.dark .text-red-700 { color: #f19188; }
+.dark .text-red-600 { color: #ef8177; }
+.dark .text-red-500 { color: #e96a60; }
+.dark .text-blue-700 { color: #85b8f2; }
+.dark .text-sky-800 { color: #7fc8e8; }
+
+/* borders & dividers */
+.dark .border-gray-50 { border-color: #1c2320; }
+.dark .border-gray-100 { border-color: #232a26; }
+.dark .border-gray-200 { border-color: #2b332e; }
+.dark .border-gray-300 { border-color: #39423c; }
+.dark .divide-gray-50 > * + * { border-color: #1c2320; }
+.dark .divide-gray-100 > * + * { border-color: #232a26; }
+.dark .border-green-100 { border-color: #1b3325; }
+.dark .border-green-200, .dark .border-green-200\/70 { border-color: #26462f; }
+.dark .border-amber-200 { border-color: #4a3a1a; }
+.dark .border-red-100 { border-color: #3c1e1b; }
+.dark .border-red-200 { border-color: #552a26; }
+
+/* form controls: most already carry bg/border classes; this covers the rest */
+.dark input, .dark select, .dark textarea {
+  background-color: #181d1a;
+  color: #eef1ef;
+  border-color: #39423c;
+}
+.dark ::placeholder { color: #6e7772; }

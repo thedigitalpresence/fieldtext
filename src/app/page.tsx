@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Check, Repeat } from "lucide-react";
 import DemoWidget from "./DemoWidget";
 import { Logo, IconBubble } from "./Logo";
+import ThemeToggle from "./ThemeToggle";
 
 export const metadata = { title: "FieldText: Run your business by text" };
 
@@ -38,7 +39,10 @@ const FAQ = [
 
 export default function Home() {
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col items-center gap-10 px-6 py-14 text-center">
+    <main className="relative mx-auto flex min-h-screen max-w-3xl flex-col items-center gap-10 px-6 py-14 text-center">
+      <div className="absolute right-4 top-4">
+        <ThemeToggle className="flex min-h-[40px] min-w-[40px] items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-500 hover:bg-gray-100" />
+      </div>
       {/* Hero */}
       <div className="flex flex-col items-center gap-5">
         <Logo className="h-12 w-12 text-brand drop-shadow-sm" />

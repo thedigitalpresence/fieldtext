@@ -11,6 +11,7 @@ import {
   CalendarDays, MapPin, HelpCircle, ClipboardList, Wallet, LayoutDashboard,
 } from "lucide-react";
 import { Logo } from "@/app/Logo";
+import ThemeToggle from "@/app/ThemeToggle";
 import type { ClientStatus, Lang } from "@/lib/types";
 import {
   logout, setLanguage, markStatus, addNote, addReminderAction, logPayment, reminderAction,
@@ -217,6 +218,7 @@ export default function DashboardClient(props: Props) {
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          <ThemeToggle className={`flex ${TAP} min-w-[44px] items-center justify-center rounded-lg border border-gray-300 px-2.5 text-gray-600 hover:bg-gray-100`} />
           <Link href="/dashboard/help" title={L.helpTitle} aria-label={L.helpTitle} className={`flex ${TAP} min-w-[44px] items-center justify-center rounded-lg border border-gray-300 px-2.5 text-gray-600 hover:bg-gray-100`}>
             <HelpCircle className="h-4 w-4" />
           </Link>
