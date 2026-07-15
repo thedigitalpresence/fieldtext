@@ -117,12 +117,32 @@ export async function createManualCharge(
 
 /** A priced one-off job marked done becomes money owed. */
 export async function createJobCharge(
-  businessId: string, clientId: string | null, amount: number, dueOn: string, description?: string | null
+  businessId: string, clientId: string | null, amount: number, dueOn: string, description?: string | null, jobId?: string | null
 ): Promise<void> {
   await db().from("charges").insert({
     business_id: businessId, client_id: clientId, amount, paid_amount: 0,
     status: "open", due_on: dueOn, description: description ?? null, kind: "job",
+    job_id: jobId ?? null,
   });
+}
+
+/**
+ * Remove the receivable a job created (call BEFORE deleting the job row).
+ * Unpaid charge → deleted outright. Partially/fully paid → the charge shrinks
+ * to what was actually paid, so applied payments stay consistent and nothing
+ * further is owed. Fixes phantom debt from deleted jobs.
+ */
+export async function removeJobCharge(businessId: string, jobId: string): Promise<void> {
+  const { data: rows } = await db()
+    .from("charges").select("*").eq("business_id", businessId).eq("job_id", jobId);
+  for (const ch of (rows ?? []) as Charge[]) {
+    const paid = Number(ch.paid_amount) || 0;
+    if (paid <= 0.004) {
+      await db().from("charges").delete().eq("id", ch.id);
+    } else {
+      await db().from("charges").update({ amount: paid, status: "paid" }).eq("id", ch.id);
+    }
+  }
 }
 
 /** Settle a payment against a client's open charges, oldest first. Returns the remaining balance. */

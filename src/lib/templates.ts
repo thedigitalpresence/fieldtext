@@ -177,6 +177,14 @@ export const t = {
     return days === 1 ? `📣 I'll remind you tomorrow to follow up.` : `📣 I'll remind you in ${days} days to follow up.`;
   },
 
+  // A quote mention with no price on an ACTIVE client: keep them active.
+  activeKept: (name: string, lang: Lang) => {
+    const first = name.split(/\s+/)[0] || name;
+    return lang === "es"
+      ? `${name} ya es cliente activo, así que lo dejé activo. ¿Es trabajo nuevo? Dame el precio ("coticé a ${first} $500 por la limpieza") y le doy seguimiento.`
+      : `${name} is already an active client, so I kept them active. Quoting new work? Give me the price ("quoted ${first} $500 for the cleanup") and I'll track it.`;
+  },
+
   quoteNudge: (name: string, amountStr: string, lang: Lang) =>
     lang === "es"
       ? `📣 Da seguimiento a ${name}${amountStr} — la cotización sigue abierta.`

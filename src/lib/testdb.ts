@@ -111,7 +111,7 @@ class Query {
   private filters: Array<(r: Row) => boolean> = [];
   private _orders: { col: string; asc: boolean }[] = [];
   private _take?: number;
-  private action: "select" | "insert" | "update" = "select";
+  private action: "select" | "insert" | "update" | "delete" = "select";
   private payload: any = null;
   private returning = false;
 
@@ -129,6 +129,10 @@ class Query {
   update(patch: Row) {
     this.action = "update";
     this.payload = patch;
+    return this;
+  }
+  delete() {
+    this.action = "delete";
     return this;
   }
   eq(col: string, val: any) { this.filters.push((r) => r[col] === val); return this; }
@@ -166,6 +170,13 @@ class Query {
       }
       save(store);
       return { data: this.returning ? updated : null, error: null };
+    }
+    if (this.action === "delete") {
+      const kept = rows.filter((r) => !this.filters.every((f) => f(r)));
+      const removed = rows.length - kept.length;
+      store[this.table] = kept;
+      save(store);
+      return { data: this.returning ? rows.filter((r) => this.filters.every((f) => f(r))) : null, error: null, count: removed } as Result;
     }
 
     let out = rows.filter((r) => this.filters.every((f) => f(r))).map((r) => ({ ...r }));

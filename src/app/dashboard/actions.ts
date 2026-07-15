@@ -329,6 +329,10 @@ export async function deletePayment(formData: FormData) {
 export async function deleteJob(formData: FormData) {
   const id = String(formData.get("jobId"));
   const b = await currentBusiness();
+  // Remove the receivable this job created FIRST (deleting the job would null
+  // the link and orphan the debt — the old phantom "who owes me" bug).
+  const { removeJobCharge } = await import("@/lib/charges");
+  await removeJobCharge(b.id, id);
   await db().from("jobs").delete().eq("id", id).eq("business_id", b.id);
   revalidatePath("/dashboard");
 }

@@ -894,6 +894,17 @@ async function logQuote(business: Business, p: ParsedAction, ctx: ParseContext, 
     return t.priceChanged(updated.name, `${money(p.amount)}${periodLabel(updated.billing_period, lang)}`, lang);
   }
 
+  // No price on an EXISTING active client ("need to send Bob a new quote"):
+  // NEVER demote them to quoted — that drops MRR, stops billing, and restarts
+  // follow-up nudges on a paying customer. Save what rode along, ask for the price.
+  if (client && client.status === "active" && !p.client_is_new && p.status !== "active") {
+    const patch: Partial<Client> = { ...sched };
+    if (p.service_description) patch.service_description = p.service_description;
+    if (p.note_text) patch.notes = client.notes ? `${client.notes}\n${p.note_text}` : p.note_text;
+    if (Object.keys(patch).length) await updateClient(client.id, patch);
+    return t.activeKept(client.name, lang);
+  }
+
   // "new job <name>..." = already-won work: the client starts ACTIVE and gets no
   // quote-followup nudges. Only an actual quote starts as quoted.
   const targetStatus = p.status === "active" ? "active" : "quoted";
@@ -1054,18 +1065,19 @@ async function logJob(business: Business, p: ParsedAction, session: ActionSessio
   }
 
   const performedOn = p.performed_on ?? today;
-  await db().from("jobs").insert({
+  const { data: jobRow } = await db().from("jobs").insert({
     business_id: business.id,
     client_id: client?.id ?? null,
     description: p.job_description ?? "Job",
     performed_on: performedOn,
     status: "done",
     amount: p.amount ?? null,
-  });
+  }).select("id").single();
 
-  // A priced one-off done = money now owed.
+  // A priced one-off done = money now owed (linked to the job, so deleting the
+  // job removes the debt too).
   if (client && p.amount != null) {
-    await createJobCharge(business.id, client.id, p.amount, performedOn, p.job_description ?? null);
+    await createJobCharge(business.id, client.id, p.amount, performedOn, p.job_description ?? null, (jobRow as { id: string } | null)?.id ?? null);
   }
 
   // Advance the recurring schedule — from whichever is later, the stored next

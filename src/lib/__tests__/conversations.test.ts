@@ -1111,6 +1111,22 @@ test("G28: winning a quote congratulates, recaps the card, and chases the gap", 
   assert.match(his, /333 F St/, his);
 });
 
+test("G29: a no-price quote mention never demotes an active client", async () => {
+  await reset([{ name: "Bob Wilson", address: "9 Elm St", status: "active", amount: 200 }]);
+  const reply = await say("need to send bob wilson a new quote");
+  assert.match(reply, /already an active client/i, `keeps them active: "${reply}"`);
+  const bob = await (async () => { const id = await bizId(); const { data } = await db().from("clients").select("*").eq("business_id", id); return (data as any[]).find((c) => /bob/i.test(c.name)); })();
+  assert.equal(bob.status, "active", "status untouched");
+  const id = await bizId();
+  const { data: nudges } = await db().from("reminders").select("*").eq("business_id", id).eq("kind", "quote_followup").eq("status", "pending");
+  assert.equal((nudges as unknown[]).length, 0, "no follow-up nudges armed on a paying client");
+  // A PRICED re-quote still updates the price (existing behavior).
+  const priced = await say("quoted bob wilson 250/mo");
+  assert.match(priced, /\$250/, priced);
+  const bob2 = await (async () => { const { data } = await db().from("clients").select("*").eq("business_id", id); return (data as any[]).find((c) => /bob/i.test(c.name)); })();
+  assert.equal(bob2.status, "active");
+});
+
 test("scenario count", () => {
   console.log(`\n  ▸ conversation scenarios executed: ${SCENARIOS}\n`);
   assert.ok(SCENARIOS >= 150, `expected a large matrix, got ${SCENARIOS}`);

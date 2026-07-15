@@ -98,3 +98,23 @@ test("monthly client on the 31st: February clamps, March snaps back to the 31st"
   const dues = (await cycleCharges(c.id)).map((ch) => ch.due_on);
   assert.deepEqual(dues, ["2026-01-31", "2026-02-28", "2026-03-31"], "no permanent drift to the 28th");
 });
+
+test("FTXT-1: deleting a job removes its receivable (unpaid) or clamps it (partly paid)", async () => {
+  const biz = await fresh();
+  const c = await addClient(biz.id, "2026-07-01", "monthly", 200);
+  const { createJobCharge, removeJobCharge, applyPaymentToCharges } = await import("../charges");
+
+  // Unpaid job charge -> deleted outright.
+  const { data: j1 } = await db().from("jobs").insert({ business_id: biz.id, client_id: c.id, description: "mulch", performed_on: "2026-07-10", status: "done", amount: 450 }).select("id").single();
+  await createJobCharge(biz.id, c.id, 450, "2026-07-10", "mulch", (j1 as { id: string }).id);
+  assert.equal(await clientBalance(biz.id, c.id), 450);
+  await removeJobCharge(biz.id, (j1 as { id: string }).id);
+  assert.equal(await clientBalance(biz.id, c.id), 0, "phantom debt removed");
+
+  // Partly-paid job charge -> shrinks to what was paid; nothing further owed.
+  const { data: j2 } = await db().from("jobs").insert({ business_id: biz.id, client_id: c.id, description: "fence", performed_on: "2026-07-11", status: "done", amount: 300 }).select("id").single();
+  await createJobCharge(biz.id, c.id, 300, "2026-07-11", "fence", (j2 as { id: string }).id);
+  await applyPaymentToCharges(biz.id, c.id, 100); // partial payment
+  await removeJobCharge(biz.id, (j2 as { id: string }).id);
+  assert.equal(await clientBalance(biz.id, c.id), 0, "no further owed after delete");
+});
