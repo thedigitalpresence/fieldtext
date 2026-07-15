@@ -100,6 +100,7 @@ export interface Client {
   service_description: string | null;
   amount: number | null;
   billing_period: string | null;
+  credit?: number; // unapplied payment money (paid early / overpaid), consumed by the next charge
   notes: string | null;
   last_nudged_at: string | null;
   // black book: recurring service schedule

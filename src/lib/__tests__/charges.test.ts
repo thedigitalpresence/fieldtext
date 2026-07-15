@@ -118,3 +118,38 @@ test("FTXT-1: deleting a job removes its receivable (unpaid) or clamps it (partl
   await removeJobCharge(biz.id, (j2 as { id: string }).id);
   assert.equal(await clientBalance(biz.id, c.id), 0, "no further owed after delete");
 });
+
+test("FTXT-2: paying before the cycle charge exists banks credit and covers the charge", async () => {
+  const biz = await fresh();
+  const c = await addClient(biz.id, "2026-06-10", "monthly", 200);
+  const { applyPaymentToCharges, clientCredit } = await import("../charges");
+
+  // Bob pays on time, but the cron hasn't generated this month's charge yet.
+  const bal = await applyPaymentToCharges(biz.id, c.id, 200);
+  assert.equal(bal, 0);
+  assert.equal(await clientCredit(biz.id, c.id), 200, "payment banked as credit, not dropped");
+
+  // The cycle charge generates later that day and is covered automatically.
+  await generateDueCharges(biz, new Date("2026-07-11T12:00:00Z"));
+  const charges = await cycleCharges(c.id);
+  assert.equal(charges.length, 1);
+  assert.equal(charges[0].status, "paid", "cycle charge auto-covered by credit");
+  assert.equal(await clientBalance(biz.id, c.id), 0, "Bob does not owe again");
+  assert.equal(await clientCredit(biz.id, c.id), 0, "credit consumed");
+});
+
+test("FTXT-2: overpayment banks the remainder; deleting the payment claws it back", async () => {
+  const biz = await fresh();
+  const c = await addClient(biz.id, "2026-06-10", "monthly", 200);
+  const { applyPaymentToCharges, reversePaymentFromCharges, clientCredit, createManualCharge } = await import("../charges");
+
+  await createManualCharge(biz.id, c.id, 300, "2026-07-01", "deck repair");
+  const bal = await applyPaymentToCharges(biz.id, c.id, 500); // owes 300, pays 500
+  assert.equal(bal, 0);
+  assert.equal(await clientCredit(biz.id, c.id), 200, "the extra $200 is credit, not gone");
+
+  // Fat-fingered payment deleted: credit clawed back FIRST, then the charge reopens.
+  await reversePaymentFromCharges(biz.id, c.id, 500);
+  assert.equal(await clientCredit(biz.id, c.id), 0);
+  assert.equal(await clientBalance(biz.id, c.id), 300, "charge fully reopened, not over-reversed");
+});

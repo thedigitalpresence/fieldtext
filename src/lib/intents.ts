@@ -9,7 +9,7 @@ import {
   computeNextService, advanceService, todayInTz, normalizeWeekday, resolveDate, wallTimeToISO,
 } from "./normalize";
 import {
-  generateDueCharges, createManualCharge, createJobCharge, applyPaymentToCharges,
+  generateDueCharges, createManualCharge, createJobCharge, applyPaymentToCharges, clientCredit,
   clientBalance, openBalances, totalOutstanding,
 } from "./charges";
 import { saveMedia } from "./attachments";
@@ -1134,6 +1134,8 @@ async function logPayment(business: Business, p: ParsedAction, session: ActionSe
   if (client) {
     const balance = await applyPaymentToCharges(business.id, client.id, p.amount);
     base += balance > 0.004 ? t.balanceRemaining(client.name, money(balance), lang) : t.allSettled(client.name, lang);
+    const credit = await clientCredit(business.id, client.id);
+    if (credit > 0.004) base += t.creditOnFile(money(credit), lang);
   } else if (p.client_name) {
     // resolveClient already asked; unreachable — kept for safety.
   } else {
@@ -1502,6 +1504,8 @@ async function clientCard(business: Business, c: Client, lang: Lang): Promise<st
   if (c.next_service_on) lines.push(`${lang === "es" ? "Próxima visita" : "Next visit"}: ${fmtDay(c.next_service_on, lang)}`);
   const owed = await clientBalance(business.id, c.id);
   if (owed > 0.004) lines.push(lang === "es" ? `Debe ${money(owed)}` : `Owes ${money(owed)}`);
+  const credit = Number(c.credit) || 0;
+  if (credit > 0.004) lines.push(lang === "es" ? `💰 ${money(credit)} a favor` : `💰 ${money(credit)} credit on file`);
   if (c.notes) lines.push(`📝 ${c.notes.replace(/\n/g, "; ").slice(0, 160)}`);
   return lines.join("\n");
 }
@@ -1602,6 +1606,11 @@ export async function buildSnapshot(business: Business): Promise<string> {
   lines.push(`COLLECTED THIS MONTH: ${money(mtd)}`);
   lines.push(`WHO OWES (open balances): ${balances.length ? "" : "nobody"}`);
   for (const b of balances) lines.push(`- ${nameOf(b.client_id)}: ${money(b.balance)} (oldest due ${b.oldest_due})`);
+  const credited = clients.filter((c) => (Number(c.credit) || 0) > 0.004);
+  if (credited.length) {
+    lines.push(`CREDITS ON FILE (paid ahead; auto-applies to their next charge):`);
+    for (const c of credited) lines.push(`- ${nameOf(c.id)}: ${money(Number(c.credit))}`);
+  }
   lines.push(`UPCOMING REMINDERS: ${(reminderRows ?? []).length}`);
   for (const r of (reminderRows ?? []) as { text: string; due_at: string }[]) lines.push(`- ${r.text} (due ${formatWhen(r.due_at, business.timezone, lang)})`);
   lines.push(`RECENT PAYMENTS (newest first):`);

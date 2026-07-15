@@ -88,7 +88,7 @@ export async function generateDueCharges(business: Business, now: Date = new Dat
       const { data: existing } = await db()
         .from("charges").select("id").eq("client_id", c.id).eq("kind", "cycle").eq("due_on", due).limit(1);
       if (!((existing ?? []) as unknown[]).length) {
-        await db().from("charges").insert({
+        const { data: inserted } = await db().from("charges").insert({
           business_id: business.id,
           client_id: c.id,
           amount: c.amount,
@@ -97,33 +97,64 @@ export async function generateDueCharges(business: Business, now: Date = new Dat
           due_on: due,
           description: c.service_description ?? null,
           kind: "cycle",
-        });
+        }).select("id").single();
         created++;
+        // Money paid ahead of this cycle covers it automatically.
+        if (inserted) await applyCreditToCharge(business.id, c.id, (inserted as { id: string }).id, Number(c.amount));
       }
     }
   }
   return created;
 }
 
+// ── Client credit ─────────────────────────────────────────────────────────────
+// Money paid with nothing open to apply it to (paid early, or overpaid) is
+// banked on the client and consumed automatically by the next charge. Without
+// this, paying on the 1st before the cycle charge generates — the HAPPY path —
+// double-counted as debt, and overpayments silently vanished.
+
+/** The client's banked credit (unapplied payment money). */
+export async function clientCredit(businessId: string, clientId: string): Promise<number> {
+  const { data } = await db().from("clients").select("*").eq("id", clientId).eq("business_id", businessId).maybeSingle();
+  return Number((data as { credit?: number } | null)?.credit) || 0;
+}
+
+async function setCredit(businessId: string, clientId: string, credit: number): Promise<void> {
+  await db().from("clients").update({ credit: Math.max(0, Math.round(credit * 100) / 100) }).eq("id", clientId).eq("business_id", businessId);
+}
+
+/** Consume banked credit against a freshly created charge. */
+async function applyCreditToCharge(businessId: string, clientId: string, chargeId: string, chargeAmount: number): Promise<void> {
+  const credit = await clientCredit(businessId, clientId);
+  if (credit <= 0.004) return;
+  const use = Math.min(credit, chargeAmount);
+  await db().from("charges")
+    .update({ paid_amount: use, status: use >= chargeAmount ? "paid" : "partial" })
+    .eq("id", chargeId);
+  await setCredit(businessId, clientId, credit - use);
+}
+
 /** "bob owes 300" — an ad-hoc receivable. */
 export async function createManualCharge(
   businessId: string, clientId: string | null, amount: number, dueOn: string, description?: string | null
 ): Promise<void> {
-  await db().from("charges").insert({
+  const { data } = await db().from("charges").insert({
     business_id: businessId, client_id: clientId, amount, paid_amount: 0,
     status: "open", due_on: dueOn, description: description ?? null, kind: "manual",
-  });
+  }).select("id").single();
+  if (clientId && data) await applyCreditToCharge(businessId, clientId, (data as { id: string }).id, amount);
 }
 
 /** A priced one-off job marked done becomes money owed. */
 export async function createJobCharge(
   businessId: string, clientId: string | null, amount: number, dueOn: string, description?: string | null, jobId?: string | null
 ): Promise<void> {
-  await db().from("charges").insert({
+  const { data } = await db().from("charges").insert({
     business_id: businessId, client_id: clientId, amount, paid_amount: 0,
     status: "open", due_on: dueOn, description: description ?? null, kind: "job",
     job_id: jobId ?? null,
-  });
+  }).select("id").single();
+  if (clientId && data) await applyCreditToCharge(businessId, clientId, (data as { id: string }).id, amount);
 }
 
 /**
@@ -164,6 +195,11 @@ export async function applyPaymentToCharges(businessId: string, clientId: string
       .eq("id", ch.id);
     remaining -= pay;
   }
+  // Leftover money (paid early / overpaid) is banked as credit, never dropped.
+  if (remaining > 0.004) {
+    const cur = await clientCredit(businessId, clientId);
+    await setCredit(businessId, clientId, cur + remaining);
+  }
   return clientBalance(businessId, clientId);
 }
 
@@ -174,12 +210,21 @@ export async function applyPaymentToCharges(businessId: string, clientId: string
  * marked paid and "who owes me?" would still say zero.
  */
 export async function reversePaymentFromCharges(businessId: string, clientId: string, amount: number): Promise<void> {
+  let remaining = amount;
+  // Claw back banked credit first — the part of the payment that never touched
+  // a charge. Otherwise deleting an overpayment would over-reverse the charges.
+  const credit = await clientCredit(businessId, clientId);
+  if (credit > 0.004) {
+    const take = Math.min(credit, remaining);
+    await setCredit(businessId, clientId, credit - take);
+    remaining -= take;
+  }
+  if (remaining <= 0.004) return;
   const { data: rows } = await db()
     .from("charges").select("*")
     .eq("business_id", businessId).eq("client_id", clientId)
     .in("status", ["paid", "partial"])
     .order("due_on", { ascending: false });
-  let remaining = amount;
   for (const ch of (rows ?? []) as Charge[]) {
     if (remaining <= 0) break;
     const paid = Number(ch.paid_amount);

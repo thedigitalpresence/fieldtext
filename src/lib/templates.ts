@@ -178,6 +178,11 @@ export const t = {
   },
 
   // A quote mention with no price on an ACTIVE client: keep them active.
+  creditOnFile: (amountStr: string, lang: Lang) =>
+    lang === "es"
+      ? ` 💰 ${amountStr} a favor, se aplicará al próximo cobro.`
+      : ` 💰 ${amountStr} credit on file, it'll cover their next charge.`,
+
   activeKept: (name: string, lang: Lang) => {
     const first = name.split(/\s+/)[0] || name;
     return lang === "es"
